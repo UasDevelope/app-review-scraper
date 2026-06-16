@@ -449,28 +449,39 @@
     }
 
     .country-picker { position: relative; }
-    .country-selected {
+    .country-chips {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 12px 14px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: #fff;
-      cursor: pointer;
-      transition: border-color 0.15s;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 36px;
+      margin-bottom: 8px;
     }
-    .country-selected:hover { border-color: var(--accent); }
-    .country-selected strong { font-size: 0.95rem; }
-    .country-selected span {
+    .country-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 8px 5px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+    .country-chip button {
+      border: none;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0 2px;
+      opacity: 0.7;
+    }
+    .country-chip button:hover { opacity: 1; }
+    .country-hint {
+      margin: 0 0 8px;
+      font-size: 0.82rem;
       color: var(--muted);
-      font-size: 0.78rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      background: var(--surface3);
-      padding: 4px 8px;
-      border-radius: 6px;
     }
     .country-list {
       position: absolute;
@@ -496,7 +507,8 @@
     }
     .country-list li:hover,
     .country-list li.active { background: var(--accent-soft); }
-    .country-list li.selected { font-weight: 600; color: var(--accent); }
+    .country-list li.selected { font-weight: 600; color: var(--accent); background: var(--accent-soft); }
+    .country-list li.selected::before { content: '✓ '; }
     .country-list .empty { color: var(--muted); cursor: default; }
 
     .status-row {
@@ -667,7 +679,7 @@
       </div>
       <ol class="steps">
         <li><strong>1</strong> Add apps</li>
-        <li><strong>2</strong> Pick country</li>
+        <li><strong>2</strong> Pick countries</li>
         <li><strong>3</strong> Run &amp; download</li>
       </ol>
     </div>
@@ -715,14 +727,12 @@
 
         <aside class="workspace-side sidebar">
           <div class="run-section">
-            <p class="section-label">Step 2 · Country</p>
-            <label for="country-search">Store region</label>
+            <p class="section-label">Step 2 · Countries</p>
+            <label for="country-search">Store regions</label>
+            <p class="country-hint">Select one or more — iOS reviews are merged across regions.</p>
             <div class="country-picker">
-              <input id="country-search" type="search" placeholder="Search countries…" autocomplete="off" style="margin-bottom:8px;" />
-              <div class="country-selected" id="country-selected" title="Click to change country">
-                <strong id="country-selected-name">United States</strong>
-                <span id="country-selected-code">us</span>
-              </div>
+              <div id="country-chips" class="country-chips"></div>
+              <input id="country-search" type="search" placeholder="Search and add countries…" autocomplete="off" style="margin-bottom:8px;" />
               <ul id="country-list" class="country-list" hidden></ul>
             </div>
             <input type="hidden" id="country" value="us" />
@@ -730,8 +740,8 @@
             <div class="info-box">
               <strong>Limits</strong>
               <ul>
-                <li>iOS: up to <strong>500</strong> per country (Apple public API limit — often less)</li>
-                <li>Android: <strong>5,000</strong> per batch</li>
+                <li>iOS: up to <strong>500</strong> per region (Apple limit — often less)</li>
+                <li>Android: <strong>5,000</strong> per region per batch</li>
               </ul>
             </div>
 
@@ -1152,7 +1162,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             url,
-            country: document.getElementById('country').value,
+            country: getSelectedCountries()[0],
           }),
         });
 
@@ -1246,7 +1256,7 @@
 
         const body = {
           apps,
-          country: document.getElementById('country').value,
+          countries: getSelectedCountries(),
         };
 
         setStatus('running', 'Starting…');
@@ -1291,14 +1301,37 @@
     renderApps([]);
 
     let allCountries = [];
-    let selectedCountry = 'us';
+    const selectedCountries = new Set(['us']);
     let countryActiveIndex = -1;
 
+    function getSelectedCountries() {
+      return [...selectedCountries];
+    }
+
     function updateCountryDisplay() {
-      const match = allCountries.find((c) => c.code === selectedCountry);
-      document.getElementById('country').value = selectedCountry;
-      document.getElementById('country-selected-name').textContent = match?.name ?? selectedCountry.toUpperCase();
-      document.getElementById('country-selected-code').textContent = selectedCountry;
+      const chips = document.getElementById('country-chips');
+      const sorted = getSelectedCountries().sort((a, b) => {
+        const na = allCountries.find((c) => c.code === a)?.name ?? a;
+        const nb = allCountries.find((c) => c.code === b)?.name ?? b;
+        return na.localeCompare(nb);
+      });
+      chips.innerHTML = sorted.map((code) => {
+        const match = allCountries.find((c) => c.code === code);
+        const label = match ? `${match.name} (${code})` : code;
+        return `<span class="country-chip">${escapeHtml(label)}<button type="button" data-remove="${code}" aria-label="Remove ${escapeHtml(label)}">×</button></span>`;
+      }).join('');
+      document.getElementById('country').value = sorted[0] ?? 'us';
+    }
+
+    function toggleCountry(code) {
+      if (selectedCountries.has(code)) {
+        if (selectedCountries.size <= 1) return;
+        selectedCountries.delete(code);
+      } else {
+        selectedCountries.add(code);
+      }
+      updateCountryDisplay();
+      renderCountryList(document.getElementById('country-search').value);
     }
 
     function getFilteredCountries(filter = '') {
@@ -1321,7 +1354,7 @@
 
       list.innerHTML = items.map((c, index) => {
         const classes = [
-          c.code === selectedCountry ? 'selected' : '',
+          selectedCountries.has(c.code) ? 'selected' : '',
           index === countryActiveIndex ? 'active' : '',
         ].filter(Boolean).join(' ');
         return `<li data-code="${c.code}" data-index="${index}" class="${classes}">
@@ -1339,19 +1372,14 @@
       countryActiveIndex = -1;
     }
 
-    function selectCountry(code) {
-      selectedCountry = code;
-      updateCountryDisplay();
-      document.getElementById('country-search').value = '';
-      closeCountryList();
-    }
-
     function selectActiveCountry() {
       const search = document.getElementById('country-search');
       const items = getFilteredCountries(search.value);
       if (!items.length) return;
       const index = countryActiveIndex >= 0 ? countryActiveIndex : 0;
-      selectCountry(items[index].code);
+      toggleCountry(items[index].code);
+      search.value = '';
+      renderCountryList('');
     }
 
     async function loadCountries() {
@@ -1371,12 +1399,11 @@
 
     const countrySearch = document.getElementById('country-search');
     const countryList = document.getElementById('country-list');
-    const countrySelected = document.getElementById('country-selected');
+    const countryChips = document.getElementById('country-chips');
 
-    countrySelected.addEventListener('click', () => {
-      countrySearch.focus();
-      renderCountryList(countrySearch.value);
-      openCountryList();
+    countryChips.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-remove]');
+      if (btn) toggleCountry(btn.dataset.remove);
     });
 
     countrySearch.addEventListener('focus', () => {
@@ -1415,7 +1442,7 @@
     countryList.addEventListener('mousedown', (e) => {
       e.preventDefault();
       const item = e.target.closest('li[data-code]');
-      if (item) selectCountry(item.dataset.code);
+      if (item) toggleCountry(item.dataset.code);
     });
 
     document.addEventListener('click', (e) => {

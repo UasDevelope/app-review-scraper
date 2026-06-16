@@ -28,3 +28,21 @@ export function normalizeStoreCountry(code, fallback = 'us') {
   const normalized = String(code ?? fallback).toLowerCase();
   return isValidStoreCountry(normalized) ? normalized : fallback;
 }
+
+/** Accept a single code, array of codes, or undefined — returns deduped valid list. */
+export function normalizeStoreCountries(input, fallback = 'us') {
+  let raw = [];
+  if (Array.isArray(input)) raw = input;
+  else if (input != null && input !== '') raw = [input];
+
+  const seen = new Set();
+  const out = [];
+  for (const code of raw) {
+    const normalized = String(code ?? '').toLowerCase();
+    if (!isValidStoreCountry(normalized) || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+
+  return out.length ? out : [normalizeStoreCountry(fallback)];
+}

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import archiver from 'archiver';
 import { listRuns, runScrape, fetchMoreReviews, getPaginationState } from './scraper.js';
 import { resolveStoreUrl } from './resolve-url.js';
-import { STORE_COUNTRIES, isValidStoreCountry, normalizeStoreCountry } from './countries.js';
+import { STORE_COUNTRIES, isValidStoreCountry, normalizeStoreCountry, normalizeStoreCountries } from './countries.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -54,7 +54,7 @@ function pushLog(job, event) {
     job.runId = event.runId;
     job.logs.push({
       time: new Date().toISOString(),
-      message: `Run started — ${event.appCount} app(s), country: ${event.country}`,
+      message: `Run started — ${event.appCount} app(s), regions: ${event.country}`,
     });
   }
   if (event.type === 'complete') {
@@ -218,10 +218,11 @@ app.post('/api/scrape', async (req, res) => {
     return res.status(409).json({ error: 'A scrape is already running. Please wait.' });
   }
 
-  const { apps, country = 'us' } = req.body ?? {};
+  const { apps, countries, country = 'us' } = req.body ?? {};
+  const regions = normalizeStoreCountries(countries ?? country);
 
-  if (!isValidStoreCountry(country)) {
-    return res.status(400).json({ error: 'Invalid country code.' });
+  if (!regions.length) {
+    return res.status(400).json({ error: 'Select at least one valid country.' });
   }
 
   if (!Array.isArray(apps) || apps.length === 0) {
@@ -248,7 +249,7 @@ app.post('/api/scrape', async (req, res) => {
         googlePlayId: app.googlePlayId?.trim() || undefined,
         appStoreId: app.appStoreId ? Number(app.appStoreId) : undefined,
       })),
-      country: normalizeStoreCountry(country),
+      countries: regions,
       onLog: (event) => pushLog(job, event),
     });
   } catch (error) {
