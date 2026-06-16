@@ -670,6 +670,21 @@
     }
     .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
     .pager span { color: var(--muted); font-size: 0.88rem; }
+    .pager-per-page {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    .pager-per-page select {
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      font-size: 0.88rem;
+      cursor: pointer;
+    }
 
     .empty { color: var(--muted); font-size: 0.85rem; padding: 12px 0; text-align: center; }
 
@@ -804,6 +819,15 @@
         <button type="button" class="btn-secondary" id="preview-prev">← Previous</button>
         <span id="preview-page-info">Page 1 of 1</span>
         <button type="button" class="btn-secondary" id="preview-next">Next →</button>
+        <label class="pager-per-page" for="preview-page-size">
+          Per page
+          <select id="preview-page-size" aria-label="Reviews per page">
+            <option value="10">10</option>
+            <option value="20" selected>20</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </label>
       </div>
     </section>
 
@@ -827,8 +851,13 @@
     let pollTimer = null;
     let currentRunId = null;
     let previewPage = 1;
-    const PREVIEW_PAGE_SIZE = 20;
+    const previewPageSizeSelect = document.getElementById('preview-page-size');
     const ANDROID_BATCH = 5000;
+
+    function getPreviewPageSize() {
+      const n = Number(previewPageSizeSelect?.value) || 20;
+      return [10, 20, 50, 100].includes(n) ? n : 20;
+    }
 
     function updateFetchMoreButton(hasMore, runId) {
       if (hasMore && runId) {
@@ -981,7 +1010,7 @@
     async function loadPreview(runId, page = 1) {
       previewPage = page;
       currentRunId = runId;
-      const res = await fetch(`/api/runs/${runId}/preview?page=${page}&limit=${PREVIEW_PAGE_SIZE}`);
+      const res = await fetch(`/api/runs/${runId}/preview?page=${page}&limit=${getPreviewPageSize()}`);
       if (!res.ok) return;
       const data = await res.json();
       document.getElementById('preview-card').hidden = false;
@@ -1018,12 +1047,15 @@
         </table>`;
 
       const pager = document.getElementById('preview-pager');
-      if (data.totalPages > 1) {
+      if (data.totalReviews > 0) {
         pager.hidden = false;
         document.getElementById('preview-page-info').textContent =
           `Page ${data.page} of ${data.totalPages}`;
         document.getElementById('preview-prev').disabled = data.page <= 1;
         document.getElementById('preview-next').disabled = data.page >= data.totalPages;
+        document.getElementById('preview-prev').hidden = data.totalPages <= 1;
+        document.getElementById('preview-next').hidden = data.totalPages <= 1;
+        document.getElementById('preview-page-info').hidden = data.totalPages <= 1;
       } else {
         pager.hidden = true;
       }
@@ -1035,6 +1067,10 @@
     document.getElementById('preview-next').onclick = () => {
       if (currentRunId) loadPreview(currentRunId, previewPage + 1);
     };
+
+    previewPageSizeSelect.addEventListener('change', () => {
+      if (currentRunId) loadPreview(currentRunId, 1);
+    });
 
     function renderSummary(summary, totalReviews = 0) {
       if (!summary?.length) return;

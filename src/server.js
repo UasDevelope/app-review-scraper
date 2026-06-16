@@ -102,7 +102,9 @@ app.get('/api/runs/:runId/preview', async (req, res) => {
   try {
     const runPath = path.join(OUTPUT_DIR, req.params.runId);
     const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(100, Number(req.query.limit) || 20);
+    const allowedLimits = [10, 20, 50, 100];
+    const requested = Number(req.query.limit) || 20;
+    const limit = allowedLimits.includes(requested) ? requested : 20;
     const reviews = JSON.parse(await fsp.readFile(path.join(runPath, 'all-reviews.json'), 'utf8'));
     const details = JSON.parse(await fsp.readFile(path.join(runPath, 'all-app-details.json'), 'utf8'));
     const dated = reviews.filter((r) => r.date).map((r) => r.date).sort();
