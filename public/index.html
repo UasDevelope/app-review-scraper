@@ -660,30 +660,67 @@
     }
     .downloads a.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
 
-    .pager {
+    .pager-bar {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 12px;
-      margin-top: 14px;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-light);
       flex-wrap: wrap;
     }
-    .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
-    .pager span { color: var(--muted); font-size: 0.88rem; }
-    .pager-per-page {
-      display: inline-flex;
+    .pager-size {
+      display: flex;
       align-items: center;
-      gap: 8px;
-      font-size: 0.88rem;
+      gap: 10px;
+      font-size: 0.85rem;
       color: var(--muted);
     }
-    .pager-per-page select {
-      padding: 6px 10px;
+    .page-size-options {
+      display: inline-flex;
+      padding: 3px;
       border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      background: #fff;
-      font-size: 0.88rem;
+      border-radius: 999px;
+      background: var(--surface3);
+      gap: 2px;
+    }
+    .page-size-options button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 600;
+      min-width: 36px;
+      padding: 6px 10px;
+      border-radius: 999px;
       cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .page-size-options button:hover { color: var(--text); }
+    .page-size-options button.active {
+      background: #fff;
+      color: var(--accent);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    }
+    .pager-nav {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .pager-nav button {
+      min-width: 88px;
+    }
+    .pager-nav button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .pager-page-info {
+      min-width: 110px;
+      text-align: center;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text);
     }
 
     .empty { color: var(--muted); font-size: 0.85rem; padding: 12px 0; text-align: center; }
@@ -815,19 +852,21 @@
       <div id="details-preview"></div>
       <div id="preview-meta"></div>
       <div class="table-wrap" id="preview-table"></div>
-      <div class="pager" id="preview-pager" hidden>
-        <button type="button" class="btn-secondary" id="preview-prev">← Previous</button>
-        <span id="preview-page-info">Page 1 of 1</span>
-        <button type="button" class="btn-secondary" id="preview-next">Next →</button>
-        <label class="pager-per-page" for="preview-page-size">
-          Per page
-          <select id="preview-page-size" aria-label="Reviews per page">
-            <option value="10">10</option>
-            <option value="20" selected>20</option>
-            <option value="50">50</option>
-            <option value="100">100</option>
-          </select>
-        </label>
+      <div class="pager-bar" id="preview-pager" hidden>
+        <div class="pager-size">
+          <span>Rows per page</span>
+          <div class="page-size-options" id="preview-page-size" role="group" aria-label="Reviews per page">
+            <button type="button" data-size="10">10</button>
+            <button type="button" data-size="20" class="active">20</button>
+            <button type="button" data-size="50">50</button>
+            <button type="button" data-size="100">100</button>
+          </div>
+        </div>
+        <div class="pager-nav">
+          <button type="button" class="btn-secondary" id="preview-prev">Previous</button>
+          <span class="pager-page-info" id="preview-page-info">Page 1 of 1</span>
+          <button type="button" class="btn-secondary" id="preview-next">Next</button>
+        </div>
       </div>
     </section>
 
@@ -851,12 +890,19 @@
     let pollTimer = null;
     let currentRunId = null;
     let previewPage = 1;
-    const previewPageSizeSelect = document.getElementById('preview-page-size');
+    let previewPageSize = 20;
+    const previewPageSizeGroup = document.getElementById('preview-page-size');
     const ANDROID_BATCH = 5000;
 
     function getPreviewPageSize() {
-      const n = Number(previewPageSizeSelect?.value) || 20;
-      return [10, 20, 50, 100].includes(n) ? n : 20;
+      return previewPageSize;
+    }
+
+    function setPreviewPageSize(size) {
+      previewPageSize = [10, 20, 50, 100].includes(size) ? size : 20;
+      previewPageSizeGroup?.querySelectorAll('button[data-size]').forEach((btn) => {
+        btn.classList.toggle('active', Number(btn.dataset.size) === previewPageSize);
+      });
     }
 
     function updateFetchMoreButton(hasMore, runId) {
@@ -1053,9 +1099,6 @@
           `Page ${data.page} of ${data.totalPages}`;
         document.getElementById('preview-prev').disabled = data.page <= 1;
         document.getElementById('preview-next').disabled = data.page >= data.totalPages;
-        document.getElementById('preview-prev').hidden = data.totalPages <= 1;
-        document.getElementById('preview-next').hidden = data.totalPages <= 1;
-        document.getElementById('preview-page-info').hidden = data.totalPages <= 1;
       } else {
         pager.hidden = true;
       }
@@ -1068,9 +1111,16 @@
       if (currentRunId) loadPreview(currentRunId, previewPage + 1);
     };
 
-    previewPageSizeSelect.addEventListener('change', () => {
+    previewPageSizeGroup?.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-size]');
+      if (!btn) return;
+      const size = Number(btn.dataset.size);
+      if (size === previewPageSize) return;
+      setPreviewPageSize(size);
       if (currentRunId) loadPreview(currentRunId, 1);
     });
+
+    setPreviewPageSize(20);
 
     function renderSummary(summary, totalReviews = 0) {
       if (!summary?.length) return;
