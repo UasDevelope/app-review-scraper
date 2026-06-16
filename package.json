@@ -1,0 +1,33 @@
+{
+  "name": "app-store-scraper",
+  "version": "1.0.0",
+  "description": "Scrape user reviews and app details from Google Play and Apple App Store",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "scrape": "node src/index.js",
+    "ui": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "verify": "node src/verify.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "scraper",
+    "google-play",
+    "app-store",
+    "reviews"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "app-store-scraper": "^0.18.0",
+    "archiver": "^7.0.1",
+    "express": "^5.2.1",
+    "google-play-scraper": "^10.1.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

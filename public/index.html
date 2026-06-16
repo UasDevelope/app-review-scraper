@@ -1,0 +1,1474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>App Review Scraper</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --surface2: #f8f9fa;
+      --surface3: #e9ecef;
+      --border: #dee2e6;
+      --border-light: #ced4da;
+      --text: #212529;
+      --muted: #6c757d;
+      --accent: #0d6efd;
+      --accent-hover: #0b5ed7;
+      --accent-soft: #cfe2ff;
+      --success: #198754;
+      --success-soft: #d1e7dd;
+      --success-text: #0f5132;
+      --warn: #fd7e14;
+      --danger: #dc3545;
+      --danger-soft: #f8d7da;
+      --danger-text: #842029;
+      --android: #198754;
+      --android-soft: #d1e7dd;
+      --ios: #0d6efd;
+      --ios-soft: #cfe2ff;
+      --radius: 8px;
+      --radius-sm: 6px;
+      --shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); }
+    code {
+      background: var(--surface3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.85em;
+      color: #d63384;
+    }
+
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 0 16px 32px; }
+
+    .site-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .site-header-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .brand p {
+      margin: 0;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .hero { display: none; }
+
+    .steps {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .steps li {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 0.75rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .steps li strong {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.68rem;
+      font-weight: 700;
+    }
+
+    .workspace {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .workspace-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      align-items: stretch;
+    }
+    @media (max-width: 960px) {
+      .workspace-grid { grid-template-columns: 1fr; }
+      .workspace-side { order: -1; border-left: none !important; border-bottom: 1px solid var(--border); }
+    }
+
+    .workspace-main {
+      padding: 18px 20px;
+      min-width: 0;
+    }
+    .workspace-side {
+      padding: 18px 16px;
+      background: var(--surface2);
+      border-left: 1px solid var(--border);
+      min-width: 0;
+    }
+
+    .layout { display: contents; }
+    main { min-width: 0; }
+
+    .section-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 0 0 10px;
+    }
+    .section-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 16px 0;
+    }
+
+    .sub-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .sub-head h3 {
+      margin: 0;
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      margin-bottom: 12px;
+      box-shadow: var(--shadow);
+    }
+    .card:last-child { margin-bottom: 0; }
+    .card[id] { scroll-margin-top: 20px; }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-head h2 {
+      margin: 0;
+      font-size: 0.88rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+    }
+    .step-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 26px;
+      height: 26px;
+      padding: 0 7px;
+      border-radius: 4px;
+      background: var(--surface3);
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    input, select {
+      width: 100%;
+      padding: 11px 13px;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      color: var(--text);
+      font-size: 0.94rem;
+      margin-bottom: 0;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    input::placeholder { color: #adb5bd; }
+
+    .hint { font-size: 0.82rem; color: var(--muted); margin: 0 0 12px; }
+    .hint strong { color: var(--text); font-weight: 600; }
+
+    .notice {
+      margin-top: 10px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 0.86rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .notice.success { background: var(--success-soft); border-color: #badbcc; color: var(--success-text); }
+    .notice.error { background: var(--danger-soft); border-color: #f5c2c7; color: var(--danger-text); }
+
+    .paste-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    @media (max-width: 700px) { .paste-grid { grid-template-columns: 1fr; } }
+
+    .paste-block {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+    }
+    .paste-block.android { border-left: 3px solid var(--android); }
+    .paste-block.ios { border-left: 3px solid var(--ios); }
+    .paste-block h3 {
+      margin: 0 0 10px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .paste-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .paste-row input { margin-bottom: 0; }
+
+    .store-tag {
+      font-size: 0.68rem;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .tag-android { background: var(--android-soft); color: var(--android); }
+    .tag-ios { background: var(--ios-soft); color: var(--ios); }
+    .tag-both { background: #e2d9f3; color: #6f42c1; }
+
+    .app-row {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+    .app-row-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .app-row-head span { font-weight: 700; font-size: 0.92rem; }
+    .app-row .field { margin-bottom: 10px; }
+    .app-row .field:last-child { margin-bottom: 0; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+
+    .empty-apps {
+      text-align: center;
+      padding: 14px 12px;
+      border: 1px dashed var(--border-light);
+      border-radius: var(--radius-sm);
+      color: var(--muted);
+      font-size: 0.82rem;
+      background: #fff;
+    }
+    .empty-apps strong { display: block; color: var(--text); margin-bottom: 2px; font-size: 0.88rem; font-weight: 600; }
+
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 0.88rem;
+      font-weight: 600;
+      padding: 10px 16px;
+      transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      width: 100%;
+      padding: 14px 18px;
+      font-size: 0.95rem;
+      margin-top: 4px;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border-light);
+    }
+    .btn-secondary:hover:not(:disabled) { background: var(--surface3); border-color: var(--border-light); }
+    .btn-danger {
+      background: #fff;
+      color: var(--danger);
+      padding: 6px 10px;
+      font-size: 0.78rem;
+      border: 1px solid #f5c2c7;
+    }
+    .btn-danger:hover { background: var(--danger-soft); }
+    .btn-block { width: 100%; }
+    .btn-fetch-more {
+      width: 100%;
+      margin-top: 10px;
+      background: #fff;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+    .btn-fetch-more:hover:not(:disabled) { background: var(--accent-soft); }
+
+    .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+    .sidebar {
+      position: sticky;
+      top: 52px;
+      align-self: start;
+      max-height: calc(100vh - 52px);
+      overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
+      padding-right: 6px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-light) transparent;
+    }
+    .sidebar::-webkit-scrollbar { width: 6px; }
+    .sidebar::-webkit-scrollbar-thumb {
+      background: var(--border-light);
+      border-radius: 999px;
+    }
+    .sidebar::-webkit-scrollbar-track { background: transparent; }
+    @media (max-width: 960px) {
+      .sidebar {
+        position: static;
+        max-height: none;
+        overflow: visible;
+        padding-right: 0;
+      }
+    }
+
+    .info-box {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      margin: 10px 0;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .info-box ul {
+      margin: 6px 0 0;
+      padding-left: 16px;
+    }
+    .info-box li { margin-bottom: 2px; }
+
+    .run-section + .run-section {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    .country-picker { position: relative; }
+    .country-selected {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .country-selected:hover { border-color: var(--accent); }
+    .country-selected strong { font-size: 0.95rem; }
+    .country-selected span {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: var(--surface3);
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+    .country-list {
+      position: absolute;
+      z-index: 30;
+      left: 0;
+      right: 0;
+      top: calc(100% + 6px);
+      max-height: 240px;
+      overflow-y: auto;
+      margin: 0;
+      padding: 6px;
+      list-style: none;
+      background: #fff;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow);
+    }
+    .country-list li {
+      padding: 10px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .country-list li:hover,
+    .country-list li.active { background: var(--accent-soft); }
+    .country-list li.selected { font-weight: 600; color: var(--accent); }
+    .country-list .empty { color: var(--muted); cursor: default; }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+    .status-idle { background: var(--surface3); color: var(--muted); }
+    .status-running { background: var(--accent-soft); color: #084298; }
+    .status-complete { background: var(--success-soft); color: var(--success-text); }
+    .status-error { background: var(--danger-soft); color: var(--danger-text); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+    .status-running .dot { animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+    .log-box {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      height: 140px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      line-height: 1.65;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-light) transparent;
+    }
+    .log-line { color: var(--text); }
+    .log-line .time { color: var(--muted); margin-right: 8px; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 560px) { .stats { grid-template-columns: 1fr; } }
+    .stat {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      border-top: 2px solid var(--border-light);
+    }
+    .stat:first-child { border-top-color: var(--accent); }
+    .stat-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+    .stat-value { font-size: 1.5rem; font-weight: 700; margin-top: 6px; letter-spacing: -0.02em; }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-top: 12px;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.86rem; min-width: 640px; }
+    th, td { text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th {
+      background: var(--surface2);
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #f8f9fa; }
+    .stars { color: var(--warn); white-space: nowrap; letter-spacing: 1px; }
+
+    .store-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .store-google_play { background: var(--android-soft); color: var(--android); }
+    .store-app_store { background: var(--ios-soft); color: var(--ios); }
+
+    .detail-card {
+      margin-bottom: 12px;
+      padding: 14px;
+      background: var(--surface2);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+    .detail-card-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .detail-card-head strong { font-size: 1rem; }
+
+    .downloads {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+    .downloads a {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 14px;
+      background: #fff;
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.84rem;
+      font-weight: 600;
+    }
+    .downloads a:hover { border-color: var(--accent); color: var(--accent); }
+    .downloads a.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .downloads a.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+
+    .pager {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+    .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pager span { color: var(--muted); font-size: 0.88rem; }
+
+    .empty { color: var(--muted); font-size: 0.85rem; padding: 12px 0; text-align: center; }
+
+    .section-title {
+      font-size: 1.05rem;
+      font-weight: 800;
+      margin: 0 0 16px;
+      letter-spacing: -0.01em;
+    }
+
+
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <div class="brand">
+        <div class="brand-icon">R</div>
+        <div>
+          <h1>App Review Scraper</h1>
+          <p>Google Play & App Store reviews · CSV export</p>
+        </div>
+      </div>
+      <ol class="steps">
+        <li><strong>1</strong> Add apps</li>
+        <li><strong>2</strong> Pick country</li>
+        <li><strong>3</strong> Run &amp; download</li>
+      </ol>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="workspace">
+      <div class="workspace-grid">
+        <main class="workspace-main" id="step-apps">
+          <p class="section-label">Step 1 · Add apps</p>
+          <p class="hint">Paste a store link — Android and iOS are added separately.</p>
+
+          <div class="paste-grid">
+            <div class="paste-block android">
+              <h3><span class="store-tag tag-android">Android</span> Google Play</h3>
+              <div class="paste-row">
+                <input id="paste-gp-url" placeholder="play.google.com/store/apps/..." />
+                <button type="button" class="btn-secondary btn-block resolve-link" data-store="google_play">Add app</button>
+              </div>
+            </div>
+            <div class="paste-block ios">
+              <h3><span class="store-tag tag-ios">iOS</span> App Store</h3>
+              <div class="paste-row">
+                <input id="paste-as-url" placeholder="apps.apple.com/.../id123456789" />
+                <button type="button" class="btn-secondary btn-block resolve-link" data-store="app_store">Add app</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="notice" id="resolve-note">Paste a link above, or add manually below.</div>
+          <div class="notice error" id="server-banner" hidden></div>
+
+          <hr class="section-divider" />
+
+          <div class="sub-head">
+            <h3>Your apps</h3>
+            <span class="step-badge" id="app-count-badge">0 ready</span>
+          </div>
+          <div id="apps-list"></div>
+          <div class="actions">
+            <button type="button" class="btn-secondary" id="add-app">Add manually</button>
+            <button type="button" class="btn-secondary" id="load-demo">Load demo</button>
+          </div>
+        </main>
+
+        <aside class="workspace-side sidebar">
+          <div class="run-section">
+            <p class="section-label">Step 2 · Country</p>
+            <label for="country-search">Store region</label>
+            <div class="country-picker">
+              <input id="country-search" type="search" placeholder="Search countries…" autocomplete="off" style="margin-bottom:8px;" />
+              <div class="country-selected" id="country-selected" title="Click to change country">
+                <strong id="country-selected-name">United States</strong>
+                <span id="country-selected-code">us</span>
+              </div>
+              <ul id="country-list" class="country-list" hidden></ul>
+            </div>
+            <input type="hidden" id="country" value="us" />
+
+            <div class="info-box">
+              <strong>Limits</strong>
+              <ul>
+                <li>iOS: <strong>500</strong> max (one fetch)</li>
+                <li>Android: <strong>5,000</strong> per batch</li>
+              </ul>
+            </div>
+
+            <button type="button" class="btn-primary" id="start-scrape">Start scrape</button>
+            <button type="button" class="btn-secondary btn-fetch-more" id="fetch-more" hidden>Fetch next 5,000 (Android)</button>
+          </div>
+
+          <div class="run-section" id="step-run">
+            <div class="sub-head">
+              <p class="section-label" style="margin:0;">Step 3 · Progress</p>
+              <div id="status-badge" class="status status-idle"><span class="dot"></span> Ready</div>
+            </div>
+            <div id="log-box" class="log-box"><div class="log-line">Waiting to start…</div></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <section class="card" id="results-card" hidden>
+      <div class="card-head">
+        <h2>Results</h2>
+      </div>
+      <div class="stats" id="results-stats"></div>
+      <div class="table-wrap" id="summary-table"></div>
+      <div class="downloads" id="downloads"></div>
+    </section>
+
+    <section class="card" id="preview-card" hidden>
+      <div class="card-head">
+        <h2>Review preview</h2>
+        <span class="step-badge" id="preview-count-badge">0 reviews</span>
+      </div>
+      <div id="details-preview"></div>
+      <div id="preview-meta"></div>
+      <div class="table-wrap" id="preview-table"></div>
+      <div class="pager" id="preview-pager" hidden>
+        <button type="button" class="btn-secondary" id="preview-prev">← Previous</button>
+        <span id="preview-page-info">Page 1 of 1</span>
+        <button type="button" class="btn-secondary" id="preview-next">Next →</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Previous runs</h2>
+      </div>
+      <div id="past-runs"><div class="empty">No previous runs yet.</div></div>
+    </section>
+
+
+  </div>
+
+  <script type="module">
+    const appsList = document.getElementById('apps-list');
+    const logBox = document.getElementById('log-box');
+    const statusBadge = document.getElementById('status-badge');
+    const startBtn = document.getElementById('start-scrape');
+    const fetchMoreBtn = document.getElementById('fetch-more');
+    const appCountBadge = document.getElementById('app-count-badge');
+    let pollTimer = null;
+    let currentRunId = null;
+    let previewPage = 1;
+    const PREVIEW_PAGE_SIZE = 20;
+    const ANDROID_BATCH = 5000;
+
+    function updateFetchMoreButton(hasMore, runId) {
+      if (hasMore && runId) {
+        currentRunId = runId;
+        fetchMoreBtn.hidden = false;
+      } else if (!hasMore) {
+        fetchMoreBtn.hidden = true;
+      }
+    }
+
+    function scrollToEl(id) {
+      document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function storeTag(row) {
+      const gp = row.querySelector('.app-gp')?.value.trim();
+      const as = row.querySelector('.app-as')?.value.trim();
+      if (gp && as) return '<span class="store-tag tag-both">Android + iOS</span>';
+      if (gp) return '<span class="store-tag tag-android">Android only</span>';
+      if (as) return '<span class="store-tag tag-ios">iOS only</span>';
+      return '';
+    }
+
+    function refreshStoreTags() {
+      appsList.querySelectorAll('.app-row').forEach((row) => {
+        const tagEl = row.querySelector('.store-tag-wrap');
+        if (tagEl) tagEl.innerHTML = storeTag(row);
+      });
+      updateAppCount();
+    }
+
+    function countReadyApps() {
+      return collectApps().filter((a) => a.name && (a.googlePlayId || a.appStoreId)).length;
+    }
+
+    function updateAppCount() {
+      const ready = countReadyApps();
+      appCountBadge.textContent = ready === 1 ? '1 app ready' : `${ready} apps ready`;
+      startBtn.textContent = ready ? `Start scrape (${ready} app${ready > 1 ? 's' : ''})` : 'Start scrape';
+    }
+
+    function appRowTemplate(index, data = {}) {
+      const gp = data.googlePlayId || '';
+      const as = data.appStoreId || '';
+      let tag = '';
+      if (gp && as) tag = '<span class="store-tag tag-both">Android + iOS</span>';
+      else if (gp) tag = '<span class="store-tag tag-android">Android only</span>';
+      else if (as) tag = '<span class="store-tag tag-ios">iOS only</span>';
+
+      return `
+        <div class="app-row" data-index="${index}">
+          <div class="app-row-head">
+            <span>${data.name ? escapeHtml(data.name) : `App ${index + 1}`} <span class="store-tag-wrap">${tag}</span></span>
+            <button type="button" class="btn-danger remove-app">Remove</button>
+          </div>
+          <div class="field">
+            <label>App name</label>
+            <input class="app-name" placeholder="e.g. TikTok" value="${escapeHtml(data.name || '')}" />
+          </div>
+          <div class="row">
+            <div class="field">
+              <label>Google Play ID</label>
+              <input class="app-gp" placeholder="com.example.app" value="${escapeHtml(gp)}" />
+            </div>
+            <div class="field">
+              <label>App Store ID</label>
+              <input class="app-as" placeholder="123456789" value="${escapeHtml(as)}" />
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function renderApps(apps = []) {
+      if (!apps.length) {
+        appsList.innerHTML = `
+          <div class="empty-apps">
+            <strong>No apps yet</strong>
+            Paste a Google Play or App Store link above to get started.
+          </div>`;
+        updateAppCount();
+        return;
+      }
+      appsList.innerHTML = apps.map((a, i) => appRowTemplate(i, a)).join('');
+      bindRemoveButtons();
+      bindStoreInputs();
+      updateAppCount();
+    }
+
+    function bindStoreInputs() {
+      appsList.querySelectorAll('.app-name, .app-gp, .app-as').forEach((input) => {
+        input.oninput = () => refreshStoreTags();
+      });
+    }
+
+    function bindRemoveButtons() {
+      appsList.querySelectorAll('.remove-app').forEach((btn) => {
+        btn.onclick = () => {
+          const row = btn.closest('.app-row');
+          const idx = [...appsList.children].indexOf(row);
+          const all = collectApps();
+          all.splice(idx, 1);
+          renderApps(all);
+        };
+      });
+    }
+
+    function collectApps() {
+      return [...appsList.querySelectorAll('.app-row')].map((row) => ({
+        name: row.querySelector('.app-name')?.value.trim() ?? '',
+        googlePlayId: row.querySelector('.app-gp')?.value.trim() ?? '',
+        appStoreId: row.querySelector('.app-as')?.value.trim() ?? '',
+      }));
+    }
+
+    function setStatus(status, label) {
+      statusBadge.className = `status status-${status}`;
+      statusBadge.innerHTML = `<span class="dot"></span> ${label}`;
+    }
+
+    function setNotice(message, type = '') {
+      const note = document.getElementById('resolve-note');
+      note.textContent = message;
+      note.className = type ? `notice ${type}` : 'notice';
+    }
+
+    function renderLogs(logs) {
+      if (!logs?.length) return;
+      logBox.innerHTML = logs.map((l) =>
+        `<div class="log-line"><span class="time">${new Date(l.time).toLocaleTimeString()}</span>${escapeHtml(l.message)}</div>`
+      ).join('');
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function renderReviewRows(reviews) {
+      return reviews.map((r) => `
+        <tr>
+          <td>${escapeHtml(r.appName || '')}</td>
+          <td><span class="store-badge store-${r.store}">${r.store === 'google_play' ? 'Android' : 'iOS'}</span></td>
+          <td>${escapeHtml(r.storeCountry || '—')}</td>
+          <td class="stars">${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</td>
+          <td>${escapeHtml((r.text || r.title || '').slice(0, 120))}${(r.text || '').length > 120 ? '…' : ''}</td>
+          <td>${r.date ? new Date(r.date).toLocaleDateString() : '—'}</td>
+        </tr>`).join('');
+    }
+
+    async function loadPreview(runId, page = 1) {
+      previewPage = page;
+      currentRunId = runId;
+      const res = await fetch(`/api/runs/${runId}/preview?page=${page}&limit=${PREVIEW_PAGE_SIZE}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      document.getElementById('preview-card').hidden = false;
+      document.getElementById('preview-count-badge').textContent =
+        `${data.totalReviews} review${data.totalReviews === 1 ? '' : 's'}`;
+
+      const detailsHtml = (data.appDetails ?? []).map((d) => `
+        <div class="detail-card">
+          <div class="detail-card-head">
+            <strong>${escapeHtml(d.appName || d.title)}</strong>
+            <span class="store-badge store-${d.store}">${d.store === 'google_play' ? 'Android' : 'iOS'}</span>
+            <span class="store-tag tag-ios">${escapeHtml(d.storeCountry || '—')}</span>
+          </div>
+          <p class="hint" style="margin:0 0 8px;">${escapeHtml((d.description || '').slice(0, 200))}${(d.description || '').length > 200 ? '…' : ''}</p>
+          <p class="hint" style="margin:0;">
+            <strong>Terms:</strong> ${d.termsOfService ? `<a href="${escapeHtml(d.termsOfService)}" target="_blank" rel="noopener">View link</a>` : 'Not found'}
+            · <strong>Privacy:</strong> ${d.privacyPolicy ? `<a href="${escapeHtml(d.privacyPolicy)}" target="_blank" rel="noopener">View link</a>` : 'Not found'}
+          </p>
+        </div>`).join('');
+
+      document.getElementById('details-preview').innerHTML = detailsHtml || '<p class="hint">No app details yet.</p>';
+
+      const rangeText = data.dateRange
+        ? `Oldest review: <strong>${data.dateRange.oldest}</strong> · Newest: <strong>${data.dateRange.newest}</strong>`
+        : '';
+      document.getElementById('preview-meta').innerHTML = `
+        <p class="hint">Showing ${data.reviews.length} of <strong>${data.totalReviews}</strong> reviews. Download CSV for the full export.</p>
+        ${rangeText ? `<p class="hint">${rangeText}</p>` : ''}`;
+
+      document.getElementById('preview-table').innerHTML = `
+        <table>
+          <thead><tr><th>App</th><th>Store</th><th>Country</th><th>Rating</th><th>Review</th><th>Date</th></tr></thead>
+          <tbody>${renderReviewRows(data.reviews)}</tbody>
+        </table>`;
+
+      const pager = document.getElementById('preview-pager');
+      if (data.totalPages > 1) {
+        pager.hidden = false;
+        document.getElementById('preview-page-info').textContent =
+          `Page ${data.page} of ${data.totalPages}`;
+        document.getElementById('preview-prev').disabled = data.page <= 1;
+        document.getElementById('preview-next').disabled = data.page >= data.totalPages;
+      } else {
+        pager.hidden = true;
+      }
+    }
+
+    document.getElementById('preview-prev').onclick = () => {
+      if (currentRunId && previewPage > 1) loadPreview(currentRunId, previewPage - 1);
+    };
+    document.getElementById('preview-next').onclick = () => {
+      if (currentRunId) loadPreview(currentRunId, previewPage + 1);
+    };
+
+    function renderSummary(summary, totalReviews = 0) {
+      if (!summary?.length) return;
+      document.getElementById('results-card').hidden = false;
+
+      const gpTotal = summary.reduce((n, s) => n + (s.googlePlayReviews ?? 0), 0);
+      const asTotal = summary.reduce((n, s) => n + (s.appStoreReviews ?? 0), 0);
+
+      document.getElementById('results-stats').innerHTML = `
+        <div class="stat"><div class="stat-label">Total reviews</div><div class="stat-value">${totalReviews}</div></div>
+        <div class="stat"><div class="stat-label">Android</div><div class="stat-value">${gpTotal || '—'}</div></div>
+        <div class="stat"><div class="stat-label">iOS</div><div class="stat-value">${asTotal || '—'}</div></div>`;
+
+      document.getElementById('summary-table').innerHTML = `
+        <table>
+          <thead><tr><th>App</th><th>Google Play</th><th>App Store</th><th>Errors</th></tr></thead>
+          <tbody>${summary.map((s) => `
+            <tr>
+              <td>${escapeHtml(s.name)}</td>
+              <td>${s.googlePlayReviews ?? '—'}</td>
+              <td>${s.appStoreReviews ?? '—'}</td>
+              <td>${s.errors?.length ? s.errors.map(e => escapeHtml(e.message)).join('; ') : '—'}</td>
+            </tr>`).join('')}</tbody>
+        </table>`;
+    }
+
+    function renderDownloads(runId) {
+      const files = [
+        ['all-reviews.csv', true],
+        ['all-reviews.json', false],
+        ['all-app-details.csv', false],
+        ['all-app-details.json', false],
+        ['summary.json', false],
+      ];
+      document.getElementById('downloads').innerHTML = [
+        ...files.map(([f, primary]) =>
+          `<a href="/api/runs/${runId}/download/${f}" download class="${primary ? 'primary' : ''}">${f}</a>`),
+        `<a href="/api/runs/${runId}/download-zip" class="primary">Download all (.zip)</a>`,
+      ].join('');
+    }
+
+    async function loadPastRuns() {
+      const res = await fetch('/api/runs');
+      const { runs } = await res.json();
+      const el = document.getElementById('past-runs');
+      if (!runs.length) {
+        el.innerHTML = '<div class="empty">No previous runs yet.</div>';
+        return;
+      }
+      el.innerHTML = `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Run</th><th>Apps</th><th>Reviews</th><th>Actions</th></tr></thead>
+            <tbody>${runs.map((r) => `
+              <tr>
+                <td><code>${escapeHtml(r.runId)}</code></td>
+                <td>${r.summary?.length ?? '—'}</td>
+                <td>${r.totalReviews || '—'}</td>
+                <td>
+                  <button type="button" class="btn-secondary view-run" data-run="${r.runId}" style="padding:6px 10px;font-size:0.78rem;">View</button>
+                </td>
+              </tr>`).join('')}</tbody>
+          </table>
+        </div>`;
+
+      el.querySelectorAll('.view-run').forEach((btn) => {
+        btn.onclick = async () => {
+          const runId = btn.dataset.run;
+          const sumRes = await fetch(`/api/runs/${runId}/summary`);
+          if (sumRes.ok) {
+            const { summary } = await sumRes.json();
+            const prevRes = await fetch(`/api/runs/${runId}/preview?page=1&limit=1`);
+            const prev = prevRes.ok ? await prevRes.json() : { totalReviews: 0 };
+            renderSummary(summary, prev.totalReviews);
+            renderDownloads(runId);
+            await loadPreview(runId, 1);
+            scrollToEl('results-card');
+          }
+        };
+      });
+    }
+
+    async function pollJob() {
+      const res = await fetch('/api/job');
+      const { job } = await res.json();
+      if (!job) return;
+
+      renderLogs(job.logs);
+
+      if (job.status === 'running') {
+        setStatus('running', job.progressLabel || 'Scraping…');
+        startBtn.disabled = true;
+        fetchMoreBtn.disabled = true;
+      } else if (job.status === 'complete') {
+        setStatus('complete', `Done — ${job.result.totalReviews} reviews`);
+        startBtn.disabled = false;
+        fetchMoreBtn.disabled = false;
+        clearInterval(pollTimer);
+        renderSummary(job.result.summary, job.result.totalReviews);
+        renderDownloads(job.result.runId);
+        await loadPreview(job.result.runId, 1);
+        await loadPastRuns();
+        updateFetchMoreButton(job.result.hasMore, job.result.runId);
+        scrollToEl('results-card');
+      } else if (job.status === 'error') {
+        setStatus('error', 'Scrape failed');
+        startBtn.disabled = false;
+        fetchMoreBtn.disabled = false;
+        clearInterval(pollTimer);
+      }
+    }
+
+    document.getElementById('add-app').onclick = () => {
+      const rows = collectApps().filter((a) => a.name || a.googlePlayId || a.appStoreId);
+      rows.push({ name: '', googlePlayId: '', appStoreId: '' });
+      renderApps(rows);
+    };
+
+    document.getElementById('load-demo').onclick = () => {
+      renderApps([{
+        name: 'Spotify',
+        googlePlayId: 'com.spotify.music',
+        appStoreId: '324684580',
+      }]);
+      setNotice('Demo loaded — Spotify on Android + iOS.', 'success');
+    };
+
+    async function addFromLink(inputId, expectedStore) {
+      const input = document.getElementById(inputId);
+      const url = input.value.trim();
+      const btn = document.querySelector(`.resolve-link[data-store="${expectedStore}"]`);
+
+      if (!url) {
+        setNotice(`Paste a ${expectedStore === 'google_play' ? 'Google Play' : 'App Store'} link first.`, 'error');
+        return;
+      }
+
+      setNotice('Looking up app…');
+      if (btn) {
+        btn.disabled = true;
+        btn.dataset.originalText = btn.textContent;
+        btn.textContent = 'Looking up…';
+      }
+
+      try {
+        const res = await fetch('/api/resolve-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url,
+            country: document.getElementById('country').value,
+          }),
+        });
+
+        let data;
+        try {
+          data = await res.json();
+        } catch {
+          throw new Error('Unable to connect. Please refresh the page and try again.');
+        }
+
+        if (!res.ok) {
+          setNotice(data.error || 'Could not resolve URL', 'error');
+          return;
+        }
+
+        if (data.store !== expectedStore) {
+          const expected = expectedStore === 'google_play' ? 'Google Play (Android)' : 'App Store (iOS)';
+          const got = data.store === 'google_play' ? 'Google Play' : 'App Store';
+          setNotice(`Wrong link — you pasted ${got} but this box is for ${expected}.`, 'error');
+          return;
+        }
+
+        const rows = collectApps().filter((a) => a.name || a.googlePlayId || a.appStoreId);
+        rows.push({
+          name: data.name,
+          googlePlayId: data.googlePlayId || '',
+          appStoreId: data.appStoreId || '',
+        });
+        renderApps(rows);
+        input.value = '';
+        setNotice(`Added ${data.name}. ${data.note || ''}`.trim(), 'success');
+      } catch (error) {
+        setNotice(error.message || 'Connection failed. Please try again.', 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = btn.dataset.originalText || 'Add app';
+        }
+      }
+    }
+
+    document.querySelectorAll('.resolve-link').forEach((btn) => {
+      btn.onclick = () => addFromLink(
+        btn.dataset.store === 'google_play' ? 'paste-gp-url' : 'paste-as-url',
+        btn.dataset.store,
+      );
+    });
+
+    ['paste-gp-url', 'paste-as-url'].forEach((id) => {
+      document.getElementById(id).addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        addFromLink(id, id === 'paste-gp-url' ? 'google_play' : 'app_store');
+      });
+    });
+
+    fetchMoreBtn.onclick = async () => {
+      if (!currentRunId) return;
+      setStatus('running', 'Fetching next 5,000 Android reviews…');
+      fetchMoreBtn.disabled = true;
+      startBtn.disabled = true;
+
+      const res = await fetch(`/api/runs/${currentRunId}/fetch-more`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ batchSize: ANDROID_BATCH }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setStatus('error', data.error || 'Failed');
+        fetchMoreBtn.disabled = false;
+        startBtn.disabled = false;
+        return;
+      }
+
+      clearInterval(pollTimer);
+      pollTimer = setInterval(pollJob, 1500);
+      pollJob();
+    };
+
+    startBtn.onclick = async () => {
+      try {
+        const apps = collectApps().filter((a) => a.name && (a.googlePlayId || a.appStoreId));
+        if (!apps.length) {
+          setStatus('error', 'Add an app first');
+          setNotice('Add at least one app with a name and store ID before scraping.', 'error');
+          scrollToEl('step-apps');
+          return;
+        }
+
+        const body = {
+          apps,
+          country: document.getElementById('country').value,
+        };
+
+        setStatus('running', 'Starting…');
+        logBox.innerHTML = '<div class="log-line">Sending request…</div>';
+        startBtn.disabled = true;
+        fetchMoreBtn.hidden = true;
+        previewPage = 1;
+        currentRunId = null;
+        document.getElementById('results-card').hidden = true;
+        document.getElementById('preview-card').hidden = true;
+
+        const res = await fetch('/api/scrape', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        let data;
+        try {
+          data = await res.json();
+        } catch {
+          throw new Error('Unable to connect. Please refresh the page and try again.');
+        }
+
+        if (!res.ok) {
+          setStatus('error', data.error || 'Failed');
+          startBtn.disabled = false;
+          logBox.innerHTML = `<div class="log-line">${escapeHtml(data.error || 'Error')}</div>`;
+          return;
+        }
+
+        clearInterval(pollTimer);
+        pollTimer = setInterval(pollJob, 1500);
+        pollJob();
+      } catch (error) {
+        setStatus('error', 'Something went wrong');
+        startBtn.disabled = false;
+        logBox.innerHTML = `<div class="log-line">${escapeHtml(error.message || String(error))}</div>`;
+      }
+    };
+
+    renderApps([]);
+
+    let allCountries = [];
+    let selectedCountry = 'us';
+    let countryActiveIndex = -1;
+
+    function updateCountryDisplay() {
+      const match = allCountries.find((c) => c.code === selectedCountry);
+      document.getElementById('country').value = selectedCountry;
+      document.getElementById('country-selected-name').textContent = match?.name ?? selectedCountry.toUpperCase();
+      document.getElementById('country-selected-code').textContent = selectedCountry;
+    }
+
+    function getFilteredCountries(filter = '') {
+      const query = filter.trim().toLowerCase();
+      if (!query) return allCountries;
+      return allCountries.filter((c) =>
+        c.name.toLowerCase().includes(query) || c.code.includes(query),
+      );
+    }
+
+    function renderCountryList(filter = '') {
+      const list = document.getElementById('country-list');
+      const items = getFilteredCountries(filter);
+      countryActiveIndex = items.length ? 0 : -1;
+
+      if (!items.length) {
+        list.innerHTML = '<li class="empty">No countries match your search.</li>';
+        return;
+      }
+
+      list.innerHTML = items.map((c, index) => {
+        const classes = [
+          c.code === selectedCountry ? 'selected' : '',
+          index === countryActiveIndex ? 'active' : '',
+        ].filter(Boolean).join(' ');
+        return `<li data-code="${c.code}" data-index="${index}" class="${classes}">
+          ${escapeHtml(c.name)} (${c.code})
+        </li>`;
+      }).join('');
+    }
+
+    function openCountryList() {
+      document.getElementById('country-list').hidden = false;
+    }
+
+    function closeCountryList() {
+      document.getElementById('country-list').hidden = true;
+      countryActiveIndex = -1;
+    }
+
+    function selectCountry(code) {
+      selectedCountry = code;
+      updateCountryDisplay();
+      document.getElementById('country-search').value = '';
+      closeCountryList();
+    }
+
+    function selectActiveCountry() {
+      const search = document.getElementById('country-search');
+      const items = getFilteredCountries(search.value);
+      if (!items.length) return;
+      const index = countryActiveIndex >= 0 ? countryActiveIndex : 0;
+      selectCountry(items[index].code);
+    }
+
+    async function loadCountries() {
+      try {
+        const res = await fetch('/api/countries');
+        const data = await res.json();
+        allCountries = data.countries ?? [];
+        const us = allCountries.find((c) => c.code === 'us');
+        const rest = allCountries.filter((c) => c.code !== 'us').sort((a, b) => a.name.localeCompare(b.name));
+        allCountries = us ? [us, ...rest] : allCountries;
+        updateCountryDisplay();
+      } catch {
+        allCountries = [{ code: 'us', name: 'United States' }];
+        updateCountryDisplay();
+      }
+    }
+
+    const countrySearch = document.getElementById('country-search');
+    const countryList = document.getElementById('country-list');
+    const countrySelected = document.getElementById('country-selected');
+
+    countrySelected.addEventListener('click', () => {
+      countrySearch.focus();
+      renderCountryList(countrySearch.value);
+      openCountryList();
+    });
+
+    countrySearch.addEventListener('focus', () => {
+      renderCountryList(countrySearch.value);
+      openCountryList();
+    });
+
+    countrySearch.addEventListener('input', () => {
+      renderCountryList(countrySearch.value);
+      openCountryList();
+    });
+
+    countrySearch.addEventListener('keydown', (e) => {
+      const items = getFilteredCountries(countrySearch.value);
+      if (!items.length) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        countryActiveIndex = Math.min(countryActiveIndex + 1, items.length - 1);
+        renderCountryList(countrySearch.value);
+        openCountryList();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        countryActiveIndex = Math.max(countryActiveIndex - 1, 0);
+        renderCountryList(countrySearch.value);
+        openCountryList();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        selectActiveCountry();
+      } else if (e.key === 'Escape') {
+        closeCountryList();
+        countrySearch.blur();
+      }
+    });
+
+    countryList.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const item = e.target.closest('li[data-code]');
+      if (item) selectCountry(item.dataset.code);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.country-picker')) closeCountryList();
+    });
+
+    loadCountries();
+    loadPastRuns();
+
+    function setServerBanner(message) {
+      const banner = document.getElementById('server-banner');
+      if (!message) {
+        banner.hidden = true;
+        banner.textContent = '';
+        return;
+      }
+      banner.hidden = false;
+      banner.textContent = message;
+    }
+
+    async function checkServerVersion() {
+      try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        setServerBanner('');
+        return data.startedAt ?? null;
+      } catch {
+        setServerBanner('Unable to connect. Please refresh the page.');
+        return null;
+      }
+    }
+
+    let knownServerStartedAt = null;
+    checkServerVersion().then((startedAt) => {
+      knownServerStartedAt = startedAt;
+    });
+
+    setInterval(async () => {
+      try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        setServerBanner('');
+        if (knownServerStartedAt == null) {
+          knownServerStartedAt = data.startedAt;
+          return;
+        }
+        if (data.startedAt && data.startedAt !== knownServerStartedAt) {
+          location.reload();
+        }
+      } catch {
+        setServerBanner('Unable to connect. Please refresh the page.');
+      }
+    }, 3000);
+  </script>
+</body>
+</html>

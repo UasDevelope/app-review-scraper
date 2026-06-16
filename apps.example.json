@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Instagram",
+    "googlePlayId": "com.instagram.android",
+    "appStoreId": 389801252
+  },
+  {
+    "name": "Spotify",
+    "googlePlayId": "com.spotify.music",
+    "appStoreId": 324684580
+  }
+]
