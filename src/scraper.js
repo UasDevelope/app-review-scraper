@@ -5,6 +5,7 @@ import {
   fetchGooglePlayReviewsBatch,
 } from './scrape-google-play.js';
 import {
+  APP_STORE_MAX,
   fetchAppStoreAppDetails,
   fetchAllAppStoreReviews,
 } from './scrape-app-store.js';
@@ -18,7 +19,6 @@ import {
 } from './utils.js';
 
 const PAGINATION_FILE = 'pagination-state.json';
-const APP_STORE_MAX = 500;
 // Popular apps (e.g. Replika ~524K reviews) would take hours without a cap.
 const GOOGLE_PLAY_MAX = 5000;
 export { GOOGLE_PLAY_MAX as GOOGLE_PLAY_BATCH_SIZE };
@@ -111,8 +111,9 @@ export async function scrapeApp(app, outRoot, { country, onLog, fetchDetails = t
         result.appStore = { details, reviewCount: 0 };
       }
 
-      log(`App Store (${country}): fetching all reviews (max ${APP_STORE_MAX})...`);
-      const reviews = await fetchAllAppStoreReviews(app.appStoreId, { country });
+      log(`App Store (${country}): fetching reviews from App Store page (up to ${APP_STORE_MAX})...`);
+      const trackViewUrl = result.appStore?.details?.url ?? null;
+      const reviews = await fetchAllAppStoreReviews(app.appStoreId, { country, trackViewUrl });
 
       const appDir = path.join(outRoot, safeName, 'app_store');
       await ensureDir(appDir);

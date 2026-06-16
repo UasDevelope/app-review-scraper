@@ -1,13 +1,28 @@
 import { mergeLegalFields } from './legal-links.js';
 
 const LOOKUP_URL = 'https://itunes.apple.com/lookup';
-const MAX_PAGES = 10;
 const DEFAULT_DELAY_MS = 600;
 const MAX_RETRIES = 4;
 
+// Apple no longer serves reviews via the public RSS feed; the app page exposes ~24
+// "most helpful" reviews embedded in serialized-server-data JSON.
+export const APP_STORE_MAX = 24;
+
+const JSON_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (compatible; AppReviewScraper/1.0)',
+  Accept: 'application/json, text/plain, */*',
+};
+
+const PAGE_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Version/17.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+};
+
 export async function fetchAppStoreAppDetails(appId, { country = 'us' } = {}) {
   const url = `${LOOKUP_URL}?id=${appId}&country=${country}&entity=software`;
-  const body = await fetchWithRetry(url);
+  const body = await fetchWithRetry(url, { headers: JSON_HEADERS });
   const json = JSON.parse(body);
   const app = json.results?.[0];
 
@@ -53,89 +68,105 @@ export async function fetchAppStoreAppDetails(appId, { country = 'us' } = {}) {
 
 export async function fetchAllAppStoreReviews(
   appId,
-  { country = 'us', delayMs = DEFAULT_DELAY_MS, maxReviews = Infinity } = {},
+  { country = 'us', delayMs = DEFAULT_DELAY_MS, maxReviews = Infinity, trackViewUrl = null } = {},
 ) {
-  const reviews = [];
-
-  for (let page = 1; page <= MAX_PAGES; page += 1) {
-    const batch = await fetchAppStoreReviewsPage(appId, { country, page });
-    if (!batch.length) break;
-
-    for (const review of batch) {
-      reviews.push(normalizeAppStoreReview(review, appId, country));
-      if (reviews.length >= maxReviews) break;
-    }
-
-    if (reviews.length >= maxReviews) break;
-    if (page < MAX_PAGES && delayMs > 0) await sleep(delayMs);
-  }
-
+  const reviews = await fetchAppStoreReviewsFromPages(appId, { country, trackViewUrl, delayMs });
   return reviews.slice(0, maxReviews);
 }
 
 export async function fetchAppStoreReviewsBatch(
   appId,
-  { country = 'us', batchSize = 100, startPage = 1, delayMs = DEFAULT_DELAY_MS } = {},
+  { country = 'us', batchSize = 100, startPage = 1, delayMs = DEFAULT_DELAY_MS, trackViewUrl = null } = {},
 ) {
-  const reviews = [];
-  let page = startPage;
-
-  while (reviews.length < batchSize && page <= MAX_PAGES) {
-    const batch = await fetchAppStoreReviewsPage(appId, { country, page });
-    if (!batch.length) break;
-
-    for (const review of batch) {
-      reviews.push(normalizeAppStoreReview(review, appId, country));
-      if (reviews.length >= batchSize) break;
-    }
-
-    page += 1;
-    if (reviews.length >= batchSize) break;
-    if (page <= MAX_PAGES && delayMs > 0) await sleep(delayMs);
-  }
-
-  const nextPage = page;
-  const hasMore = nextPage <= MAX_PAGES && reviews.length >= batchSize;
+  const reviews = await fetchAppStoreReviewsFromPages(appId, { country, trackViewUrl, delayMs });
+  const start = Math.max(0, startPage - 1) * batchSize;
+  const slice = reviews.slice(start, start + batchSize);
 
   return {
-    reviews,
-    nextPage,
-    hasMore,
-    platformMax: MAX_PAGES * 50,
+    reviews: slice,
+    nextPage: startPage + 1,
+    hasMore: start + slice.length < reviews.length,
+    platformMax: APP_STORE_MAX,
   };
 }
 
-async function fetchAppStoreReviewsPage(appId, { country = 'us', page = 1, sort = 'mostRecent' } = {}) {
-  const url = `https://itunes.apple.com/${country}/rss/customerreviews/page=${page}/id=${appId}/sortby=${sort}/json`;
-  const body = await fetchWithRetry(url);
-  const json = JSON.parse(body);
-  const entries = json?.feed?.entry;
+async function fetchAppStoreReviewsFromPages(appId, { country = 'us', trackViewUrl = null, delayMs = 0 } = {}) {
+  const pageUrl = await resolveAppStorePageUrl(appId, { country, trackViewUrl });
+  const merged = new Map();
+  const suffixes = ['', '?see-all=reviews'];
 
-  if (!entries) return [];
+  for (let i = 0; i < suffixes.length; i += 1) {
+    const html = await fetchWithRetry(pageUrl + suffixes[i], { headers: PAGE_HEADERS });
+    for (const review of extractReviewsFromHtml(html)) {
+      merged.set(review.id, review);
+    }
+    if (i < suffixes.length - 1 && delayMs > 0) await sleep(delayMs);
+  }
 
-  const list = Array.isArray(entries) ? entries : [entries];
-  return list
-    .filter((entry) => entry?.['im:rating'])
-    .map((review) => ({
-      id: review.id?.label,
-      userName: review.author?.name?.label,
-      score: parseInt(review['im:rating'].label, 10),
-      title: review.title?.label ?? '',
-      text: review.content?.label ?? '',
-      version: review['im:version']?.label ?? null,
-      url: review.link?.attributes?.href ?? null,
-      updated: review.updated?.label ?? null,
-    }));
+  return [...merged.values()]
+    .sort((a, b) => {
+      const aTime = a.updated ? Date.parse(a.updated) : 0;
+      const bTime = b.updated ? Date.parse(b.updated) : 0;
+      return bTime - aTime;
+    })
+    .map((review) => normalizeAppStoreReview(review, appId, country));
 }
 
-async function fetchWithRetry(url, attempt = 1) {
+async function resolveAppStorePageUrl(appId, { country = 'us', trackViewUrl = null } = {}) {
+  const url = trackViewUrl ?? (await fetchAppStoreAppDetails(appId, { country })).url;
+  const base = url.replace(/\?.*$/, '');
+  return base.replace(/\/[a-z]{2}\//, `/${country}/`);
+}
+
+function extractReviewsFromHtml(html) {
+  const marker = 'id="serialized-server-data"';
+  const markerIndex = html.indexOf(marker);
+  if (markerIndex < 0) return [];
+
+  const jsonStart = html.indexOf('>', markerIndex) + 1;
+  const jsonEnd = html.indexOf('</script>', jsonStart);
+  if (jsonEnd <= jsonStart) return [];
+
+  let data;
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; AppReviewScraper/1.0)',
-        Accept: 'application/json, text/plain, */*',
-      },
+    data = JSON.parse(html.slice(jsonStart, jsonEnd));
+  } catch {
+    return [];
+  }
+
+  const reviews = new Map();
+  walkReviewNodes(data, reviews);
+  return [...reviews.values()];
+}
+
+function walkReviewNodes(node, out) {
+  if (!node || typeof node !== 'object') return;
+
+  if (node.$kind === 'Review' && node.id && node.contents) {
+    out.set(node.id, {
+      id: node.id,
+      userName: node.reviewerName ?? '',
+      score: node.rating,
+      title: node.title ?? '',
+      text: node.contents ?? '',
+      version: node.version ?? null,
+      url: null,
+      updated: node.date ?? null,
     });
+    return;
+  }
+
+  if (Array.isArray(node)) {
+    for (const item of node) walkReviewNodes(item, out);
+    return;
+  }
+
+  for (const value of Object.values(node)) walkReviewNodes(value, out);
+}
+
+async function fetchWithRetry(url, { attempt = 1, headers = JSON_HEADERS } = {}) {
+  try {
+    const response = await fetch(url, { headers });
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} for ${url}`);
@@ -147,7 +178,7 @@ async function fetchWithRetry(url, attempt = 1) {
     if (retryable && attempt < MAX_RETRIES) {
       const waitMs = attempt * 1000;
       await sleep(waitMs);
-      return fetchWithRetry(url, attempt + 1);
+      return fetchWithRetry(url, { attempt: attempt + 1, headers });
     }
     throw error;
   }
