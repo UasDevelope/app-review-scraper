@@ -165,9 +165,9 @@ async function fetchAppStoreReviewsFromRss(appId, { country = 'us', delayMs = 0 
   for (const sort of RSS_SORTS) {
     for (let page = 1; page <= RSS_MAX_PAGES; page += 1) {
       const batch = await fetchAppStoreReviewsRssPage(appId, { country, page, sort });
-      if (!batch.length) break;
-
-      for (const review of batch) merged.set(review.id, review);
+      if (batch.length) {
+        for (const review of batch) merged.set(review.id, review);
+      }
       if (page < RSS_MAX_PAGES && delayMs > 0) await sleep(delayMs);
     }
   }
