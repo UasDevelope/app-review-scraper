@@ -20,6 +20,14 @@ export const STORE_COUNTRIES = CODES.map((code) => ({
 
 const CODE_SET = new Set(CODES);
 
+/** All supported storefront ISO codes (115 regions). */
+export const ALL_STORE_COUNTRY_CODES = [...CODES];
+
+/** High-yield regions scraped first for faster early results. */
+export const PRIORITY_STORE_COUNTRIES = [
+  'us', 'gb', 'ca', 'au', 'de', 'fr', 'jp', 'in', 'br', 'mx', 'kr', 'it', 'es', 'nl', 'se',
+];
+
 export function isValidStoreCountry(code) {
   return CODE_SET.has(String(code ?? '').toLowerCase());
 }
@@ -45,4 +53,19 @@ export function normalizeStoreCountries(input, fallback = 'us') {
   }
 
   return out.length ? out : [normalizeStoreCountry(fallback)];
+}
+
+/** Resolve which regions to scrape; maxCoverage uses every supported storefront. */
+export function resolveScrapeRegions({ countries, country, maxCoverage = false } = {}) {
+  if (maxCoverage) return ALL_STORE_COUNTRY_CODES;
+  return normalizeStoreCountries(countries ?? country);
+}
+
+export function orderStoreCountries(codes) {
+  const set = new Set(codes);
+  const ordered = PRIORITY_STORE_COUNTRIES.filter((c) => set.has(c));
+  for (const code of codes) {
+    if (!ordered.includes(code)) ordered.push(code);
+  }
+  return ordered;
 }

@@ -98,6 +98,46 @@ export async function fetchAppStoreReviewsBatch(
   };
 }
 
+/** Fetch reviews across many storefronts in parallel — best way to maximize iOS coverage. */
+export async function fetchAppStoreReviewsAllRegions(
+  appId,
+  {
+    countries,
+    trackViewUrl = null,
+    concurrency = 6,
+    delayMs = 150,
+    onProgress = null,
+  } = {},
+) {
+  const merged = new Map();
+  let completed = 0;
+
+  async function fetchRegion(country) {
+    try {
+      return await fetchAppStoreReviewsCombined(appId, { country, trackViewUrl, delayMs });
+    } catch {
+      return [];
+    }
+  }
+
+  for (let i = 0; i < countries.length; i += concurrency) {
+    const chunk = countries.slice(i, i + concurrency);
+    const batches = await Promise.all(chunk.map((country) => fetchRegion(country)));
+    for (const batch of batches) {
+      for (const review of batch) merged.set(review.reviewId, review);
+    }
+    completed += chunk.length;
+    onProgress?.({ completed, total: countries.length, unique: merged.size });
+    if (i + concurrency < countries.length && delayMs > 0) await sleep(delayMs);
+  }
+
+  return [...merged.values()].sort((a, b) => {
+    const aTime = a.date ? Date.parse(a.date) : 0;
+    const bTime = b.date ? Date.parse(b.date) : 0;
+    return bTime - aTime;
+  });
+}
+
 async function fetchAppStoreReviewsCombined(
   appId,
   { country = 'us', trackViewUrl = null, delayMs = DEFAULT_DELAY_MS } = {},
@@ -136,8 +176,19 @@ async function fetchAppStoreReviewsFromRss(appId, { country = 'us', delayMs = 0 
 }
 
 async function fetchAppStoreReviewsRssPage(appId, { country = 'us', page = 1, sort = 'mostRecent' } = {}) {
-  const url = `https://itunes.apple.com/${country}/rss/customerreviews/page=${page}/id=${appId}/sortby=${sort}/json`;
+  const urls = [
+    `https://itunes.apple.com/${country}/rss/customerreviews/page=${page}/id=${appId}/sortby=${sort}/json`,
+    `https://itunes.apple.com/${country}/rss/customerreviews/id=${appId}/sortBy=${sort}/page=${page}/json`,
+  ];
 
+  for (const url of urls) {
+    const batch = await fetchAppStoreReviewsRssPageUrl(url);
+    if (batch.length) return batch;
+  }
+  return [];
+}
+
+async function fetchAppStoreReviewsRssPageUrl(url) {
   try {
     const body = await fetchWithRetry(url, { headers: JSON_HEADERS });
     const json = JSON.parse(body);

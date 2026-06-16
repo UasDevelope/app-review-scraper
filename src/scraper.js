@@ -8,7 +8,9 @@ import {
   APP_STORE_MAX,
   fetchAppStoreAppDetails,
   fetchAllAppStoreReviews,
+  fetchAppStoreReviewsAllRegions,
 } from './scrape-app-store.js';
+import { orderStoreCountries, resolveScrapeRegions } from './countries.js';
 import {
   ensureDir,
   outputDir,
@@ -23,12 +25,6 @@ const PAGINATION_FILE = 'pagination-state.json';
 const GOOGLE_PLAY_MAX = 5000;
 export { GOOGLE_PLAY_MAX as GOOGLE_PLAY_BATCH_SIZE };
 
-function resolveCountries({ countries, country }) {
-  if (Array.isArray(countries) && countries.length) return countries;
-  if (country) return [country];
-  return ['us'];
-}
-
 function dedupeReviews(reviews) {
   const seen = new Set();
   const out = [];
@@ -41,15 +37,25 @@ function dedupeReviews(reviews) {
   return out;
 }
 
-export async function scrapeApp(app, outRoot, { countries, country, onLog, fetchDetails = true }) {
-  const regions = resolveCountries({ countries, country });
-  const primary = regions[0];
+export async function scrapeApp(app, outRoot, { countries, country, maxCoverage = false, onLog, fetchDetails = true }) {
+  const androidRegions = orderStoreCountries(resolveScrapeRegions({ countries, country, maxCoverage: false }));
+  const iosRegions = orderStoreCountries(
+    maxCoverage
+      ? resolveScrapeRegions({ maxCoverage: true })
+      : resolveScrapeRegions({ countries, country, maxCoverage: false }),
+  );
+  const primary = androidRegions[0] ?? iosRegions[0] ?? 'us';
   const label = app.name ?? app.googlePlayId ?? app.appStoreId;
   const safeName = sanitizeFilename(String(label));
   const log = (message) => onLog?.({ type: 'log', message, app: label });
-  const regionLabel = regions.length === 1 ? regions[0] : `${regions.length} regions`;
+  const androidLabel = androidRegions.length === 1 ? androidRegions[0] : `${androidRegions.length} regions`;
+  const iosLabel = maxCoverage
+    ? `all ${iosRegions.length} regions`
+    : iosRegions.length === 1
+      ? iosRegions[0]
+      : `${iosRegions.length} regions`;
 
-  log(`Starting ${label} (${regionLabel})...`);
+  log(`Starting ${label}…`);
 
   const result = {
     name: app.name ?? safeName,
@@ -83,7 +89,7 @@ export async function scrapeApp(app, outRoot, { countries, country, onLog, fetch
       let hasMore = false;
       let continuationToken = null;
 
-      for (const region of regions) {
+      for (const region of androidRegions) {
         log(`Google Play (${region}): fetching up to ${GOOGLE_PLAY_MAX.toLocaleString()} reviews...`);
         let lastLogged = 0;
         const batch = await fetchGooglePlayReviewsBatch(app.googlePlayId, {
@@ -99,11 +105,11 @@ export async function scrapeApp(app, outRoot, { countries, country, onLog, fetch
           },
         });
         merged.push(...batch.reviews);
-        if (regions.length === 1 && batch.hasMore) {
+        if (androidRegions.length === 1 && batch.hasMore) {
           hasMore = true;
           continuationToken = batch.continuationToken;
         }
-        if (regions.length > 1) await sleep(400);
+        if (androidRegions.length > 1) await sleep(400);
       }
 
       const reviews = dedupeReviews(merged);
@@ -123,10 +129,10 @@ export async function scrapeApp(app, outRoot, { countries, country, onLog, fetch
         fetched: reviews.length,
         continuationToken,
         platformMax: GOOGLE_PLAY_MAX,
-        storeCountry: regions.length === 1 ? primary : regions.join(','),
+        storeCountry: androidRegions.length === 1 ? primary : androidRegions.join(','),
       };
 
-      log(`Google Play: done — ${reviews.length} unique reviews (${regionLabel})${hasMore ? ' — more available, click Fetch next 5,000' : ''}`);
+      log(`Google Play: done — ${reviews.length} unique reviews (${androidLabel})${hasMore ? ' — more available, click Fetch next 5,000' : ''}`);
     } catch (error) {
       const message = error?.message ?? String(error);
       result.errors.push({ store: 'google_play', message });
@@ -145,23 +151,30 @@ export async function scrapeApp(app, outRoot, { countries, country, onLog, fetch
         result.appStore = { details, reviewCount: 0 };
       }
 
-      log(`App Store: fetching reviews (RSS + page HTML, up to ${APP_STORE_MAX} per region)...`);
+      log(`App Store: maximum coverage — ${iosRegions.length} regions (RSS + page HTML per region)…`);
       const trackViewUrl = result.appStore?.details?.url ?? null;
-      const merged = [];
+      let reviews;
+      let lastLogged = 0;
 
-      for (const region of regions) {
-        log(`App Store (${region}): fetching…`);
-        const batch = await fetchAllAppStoreReviews(app.appStoreId, {
-          country: region,
+      if (iosRegions.length > 1) {
+        reviews = await fetchAppStoreReviewsAllRegions(app.appStoreId, {
+          countries: iosRegions,
+          trackViewUrl,
+          onProgress: ({ completed, total, unique }) => {
+            onLog?.({ type: 'progress', store: 'app_store', app: label, count: unique });
+            if (completed - lastLogged >= 10 || completed === total) {
+              lastLogged = completed;
+              log(`App Store: ${completed}/${total} regions — ${unique.toLocaleString()} unique reviews…`);
+            }
+          },
+        });
+      } else {
+        reviews = await fetchAllAppStoreReviews(app.appStoreId, {
+          country: iosRegions[0],
           trackViewUrl,
           delayMs: 400,
         });
-        merged.push(...batch);
-        log(`App Store (${region}): ${batch.length} reviews`);
-        if (regions.length > 1) await sleep(400);
       }
-
-      const reviews = dedupeReviews(merged);
 
       const appDir = path.join(outRoot, safeName, 'app_store');
       await ensureDir(appDir);
@@ -176,11 +189,12 @@ export async function scrapeApp(app, outRoot, { countries, country, onLog, fetch
       result.pagination.appStore = {
         hasMore: false,
         fetched: reviews.length,
-        platformMax: APP_STORE_MAX * regions.length,
-        storeCountry: regions.length === 1 ? primary : regions.join(','),
+        platformMax: APP_STORE_MAX * iosRegions.length,
+        storeCountry: maxCoverage ? 'all' : iosRegions.length === 1 ? iosRegions[0] : iosRegions.join(','),
+        maxCoverage: Boolean(maxCoverage),
       };
 
-      log(`App Store: done — ${reviews.length} unique reviews (${regionLabel})`);
+      log(`App Store: done — ${reviews.length} unique reviews (${iosLabel})`);
     } catch (error) {
       const message = error?.message ?? String(error);
       result.errors.push({ store: 'app_store', message });
@@ -266,6 +280,7 @@ export async function runScrape({
   apps,
   countries,
   country = 'us',
+  maxCoverage = false,
   outRoot: customOutRoot = null,
   onLog,
 }) {
@@ -273,25 +288,39 @@ export async function runScrape({
     throw new Error('Add at least one app to scrape.');
   }
 
-  const regions = resolveCountries({ countries, country });
+  const androidRegions = orderStoreCountries(resolveScrapeRegions({ countries, country, maxCoverage: false }));
+  const iosRegions = orderStoreCountries(
+    maxCoverage
+      ? resolveScrapeRegions({ maxCoverage: true })
+      : resolveScrapeRegions({ countries, country, maxCoverage: false }),
+  );
 
   const outRoot = customOutRoot ?? outputDir();
   await ensureDir(outRoot);
   const runId = path.basename(outRoot);
 
-  onLog?.({ type: 'started', runId, outRoot, appCount: apps.length, country: regions.join(', '), countries: regions });
+  onLog?.({
+    type: 'started',
+    runId,
+    outRoot,
+    appCount: apps.length,
+    country: maxCoverage ? `all ${iosRegions.length} iOS regions` : androidRegions.join(', '),
+    countries: maxCoverage ? iosRegions : androidRegions,
+    maxCoverage: Boolean(maxCoverage),
+  });
 
   const paginationState = {
     runId,
-    country: regions[0],
-    countries: regions,
+    country: androidRegions[0],
+    countries: maxCoverage ? iosRegions : androidRegions,
+    maxCoverage: Boolean(maxCoverage),
     apps: [],
   };
 
   const summary = [];
 
   for (const app of apps) {
-    const result = await scrapeApp(app, outRoot, { countries: regions, onLog });
+    const result = await scrapeApp(app, outRoot, { countries: androidRegions, maxCoverage, onLog });
     summary.push({
       name: result.name,
       googlePlayReviews: result.googlePlay?.reviewCount ?? null,
@@ -323,8 +352,9 @@ export async function runScrape({
     totalReviews: exportData.totalReviews,
     totalApps: summary.length,
     hasMore,
-    country: regions.join(', '),
-    countries: regions,
+    country: maxCoverage ? `all ${iosRegions.length} iOS regions` : androidRegions.join(', '),
+    countries: maxCoverage ? iosRegions : androidRegions,
+    maxCoverage: Boolean(maxCoverage),
   };
 
   onLog?.({ type: 'complete', ...payload });

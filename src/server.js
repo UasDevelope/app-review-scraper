@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 import archiver from 'archiver';
 import { listRuns, runScrape, fetchMoreReviews, getPaginationState } from './scraper.js';
 import { resolveStoreUrl } from './resolve-url.js';
-import { STORE_COUNTRIES, isValidStoreCountry, normalizeStoreCountry, normalizeStoreCountries } from './countries.js';
+import { STORE_COUNTRIES, isValidStoreCountry, normalizeStoreCountry, normalizeStoreCountries, resolveScrapeRegions } from './countries.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -218,8 +218,10 @@ app.post('/api/scrape', async (req, res) => {
     return res.status(409).json({ error: 'A scrape is already running. Please wait.' });
   }
 
-  const { apps, countries, country = 'us' } = req.body ?? {};
-  const regions = normalizeStoreCountries(countries ?? country);
+  const { apps, countries, country = 'us', maxCoverage = false } = req.body ?? {};
+  const regions = maxCoverage
+    ? resolveScrapeRegions({ maxCoverage: true })
+    : normalizeStoreCountries(countries ?? country);
 
   if (!regions.length) {
     return res.status(400).json({ error: 'Select at least one valid country.' });
@@ -250,6 +252,7 @@ app.post('/api/scrape', async (req, res) => {
         appStoreId: app.appStoreId ? Number(app.appStoreId) : undefined,
       })),
       countries: regions,
+      maxCoverage: Boolean(maxCoverage),
       onLog: (event) => pushLog(job, event),
     });
   } catch (error) {

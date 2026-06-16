@@ -483,6 +483,22 @@
       font-size: 0.82rem;
       color: var(--muted);
     }
+    .max-coverage {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 12px 0;
+      padding: 12px 14px;
+      border: 1px solid var(--accent-soft);
+      border-radius: var(--radius-sm);
+      background: var(--accent-soft);
+      cursor: pointer;
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+    .max-coverage input { margin-top: 3px; accent-color: var(--accent); }
+    .max-coverage strong { display: block; color: var(--accent); margin-bottom: 2px; }
+    .country-picker.disabled { opacity: 0.55; pointer-events: none; }
     .country-list {
       position: absolute;
       z-index: 30;
@@ -728,11 +744,18 @@
         <aside class="workspace-side sidebar">
           <div class="run-section">
             <p class="section-label">Step 2 · Countries</p>
-            <label for="country-search">Store regions</label>
-            <p class="country-hint">Select one or more — iOS reviews are merged across regions.</p>
-            <div class="country-picker">
+            <label class="max-coverage" for="max-coverage">
+              <input type="checkbox" id="max-coverage" checked />
+              <span>
+                <strong>Maximum iOS coverage (recommended)</strong>
+                Scrape all 115 App Store regions in parallel — best way to get the most reviews.
+              </span>
+            </label>
+            <label for="country-search">Or pick specific regions</label>
+            <p class="country-hint">Only used when maximum coverage is off.</p>
+            <div class="country-picker disabled" id="country-picker">
               <div id="country-chips" class="country-chips"></div>
-              <input id="country-search" type="search" placeholder="Search and add countries…" autocomplete="off" style="margin-bottom:8px;" />
+              <input id="country-search" type="search" placeholder="Search and add countries…" autocomplete="off" style="margin-bottom:8px;" disabled />
               <ul id="country-list" class="country-list" hidden></ul>
             </div>
             <input type="hidden" id="country" value="us" />
@@ -740,7 +763,7 @@
             <div class="info-box">
               <strong>Limits</strong>
               <ul>
-                <li>iOS: up to <strong>500</strong> per region (Apple limit — often less)</li>
+                <li>iOS: all public sources per region (Apple cap — typically <strong>200–500+</strong> total with max coverage)</li>
                 <li>Android: <strong>5,000</strong> per region per batch</li>
               </ul>
             </div>
@@ -1256,6 +1279,7 @@
 
         const body = {
           apps,
+          maxCoverage: document.getElementById('max-coverage').checked,
           countries: getSelectedCountries(),
         };
 
@@ -1400,6 +1424,17 @@
     const countrySearch = document.getElementById('country-search');
     const countryList = document.getElementById('country-list');
     const countryChips = document.getElementById('country-chips');
+    const countryPicker = document.getElementById('country-picker');
+    const maxCoverageInput = document.getElementById('max-coverage');
+
+    function syncCountryPickerState() {
+      const maxMode = maxCoverageInput.checked;
+      countryPicker.classList.toggle('disabled', maxMode);
+      countrySearch.disabled = maxMode;
+    }
+
+    maxCoverageInput.addEventListener('change', syncCountryPickerState);
+    syncCountryPickerState();
 
     countryChips.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-remove]');
