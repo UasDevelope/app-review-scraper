@@ -111,7 +111,7 @@ export async function scrapeApp(app, outRoot, { country, onLog, fetchDetails = t
         result.appStore = { details, reviewCount: 0 };
       }
 
-      log(`App Store (${country}): fetching reviews from App Store page (up to ${APP_STORE_MAX})...`);
+      log(`App Store (${country}): fetching reviews (RSS + page HTML, up to ${APP_STORE_MAX})...`);
       const trackViewUrl = result.appStore?.details?.url ?? null;
       const reviews = await fetchAllAppStoreReviews(app.appStoreId, { country, trackViewUrl });
 

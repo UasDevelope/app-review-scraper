@@ -3,10 +3,11 @@ import { mergeLegalFields } from './legal-links.js';
 const LOOKUP_URL = 'https://itunes.apple.com/lookup';
 const DEFAULT_DELAY_MS = 600;
 const MAX_RETRIES = 4;
+const RSS_MAX_PAGES = 10;
+const RSS_SORTS = ['mostRecent', 'mostHelpful'];
 
-// Apple no longer serves reviews via the public RSS feed; the app page exposes ~24
-// "most helpful" reviews embedded in serialized-server-data JSON.
-export const APP_STORE_MAX = 24;
+// Best-effort cap. Apple no longer reliably exposes 500 reviews via public APIs.
+export const APP_STORE_MAX = 500;
 
 const JSON_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (compatible; AppReviewScraper/1.0)',
@@ -19,6 +20,13 @@ const PAGE_HEADERS = {
   Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.9',
 };
+
+const HTML_SUFFIXES = [
+  '',
+  '?see-all=reviews',
+  '?see-all=customer-reviews',
+  '?platform=iphone&see-all=reviews',
+];
 
 export async function fetchAppStoreAppDetails(appId, { country = 'us' } = {}) {
   const url = `${LOOKUP_URL}?id=${appId}&country=${country}&entity=software`;
@@ -68,9 +76,9 @@ export async function fetchAppStoreAppDetails(appId, { country = 'us' } = {}) {
 
 export async function fetchAllAppStoreReviews(
   appId,
-  { country = 'us', delayMs = DEFAULT_DELAY_MS, maxReviews = Infinity, trackViewUrl = null } = {},
+  { country = 'us', delayMs = DEFAULT_DELAY_MS, maxReviews = APP_STORE_MAX, trackViewUrl = null } = {},
 ) {
-  const reviews = await fetchAppStoreReviewsFromPages(appId, { country, trackViewUrl, delayMs });
+  const reviews = await fetchAppStoreReviewsCombined(appId, { country, trackViewUrl, delayMs });
   return reviews.slice(0, maxReviews);
 }
 
@@ -78,7 +86,7 @@ export async function fetchAppStoreReviewsBatch(
   appId,
   { country = 'us', batchSize = 100, startPage = 1, delayMs = DEFAULT_DELAY_MS, trackViewUrl = null } = {},
 ) {
-  const reviews = await fetchAppStoreReviewsFromPages(appId, { country, trackViewUrl, delayMs });
+  const reviews = await fetchAppStoreReviewsCombined(appId, { country, trackViewUrl, delayMs });
   const start = Math.max(0, startPage - 1) * batchSize;
   const slice = reviews.slice(start, start + batchSize);
 
@@ -90,18 +98,17 @@ export async function fetchAppStoreReviewsBatch(
   };
 }
 
-async function fetchAppStoreReviewsFromPages(appId, { country = 'us', trackViewUrl = null, delayMs = 0 } = {}) {
-  const pageUrl = await resolveAppStorePageUrl(appId, { country, trackViewUrl });
+async function fetchAppStoreReviewsCombined(
+  appId,
+  { country = 'us', trackViewUrl = null, delayMs = DEFAULT_DELAY_MS } = {},
+) {
   const merged = new Map();
-  const suffixes = ['', '?see-all=reviews'];
 
-  for (let i = 0; i < suffixes.length; i += 1) {
-    const html = await fetchWithRetry(pageUrl + suffixes[i], { headers: PAGE_HEADERS });
-    for (const review of extractReviewsFromHtml(html)) {
-      merged.set(review.id, review);
-    }
-    if (i < suffixes.length - 1 && delayMs > 0) await sleep(delayMs);
-  }
+  const rssReviews = await fetchAppStoreReviewsFromRss(appId, { country, delayMs });
+  for (const review of rssReviews) merged.set(review.id, review);
+
+  const htmlReviews = await fetchAppStoreReviewsFromHtml(appId, { country, trackViewUrl, delayMs });
+  for (const review of htmlReviews) merged.set(review.id, review);
 
   return [...merged.values()]
     .sort((a, b) => {
@@ -110,6 +117,71 @@ async function fetchAppStoreReviewsFromPages(appId, { country = 'us', trackViewU
       return bTime - aTime;
     })
     .map((review) => normalizeAppStoreReview(review, appId, country));
+}
+
+async function fetchAppStoreReviewsFromRss(appId, { country = 'us', delayMs = 0 } = {}) {
+  const merged = new Map();
+
+  for (const sort of RSS_SORTS) {
+    for (let page = 1; page <= RSS_MAX_PAGES; page += 1) {
+      const batch = await fetchAppStoreReviewsRssPage(appId, { country, page, sort });
+      if (!batch.length) break;
+
+      for (const review of batch) merged.set(review.id, review);
+      if (page < RSS_MAX_PAGES && delayMs > 0) await sleep(delayMs);
+    }
+  }
+
+  return [...merged.values()];
+}
+
+async function fetchAppStoreReviewsRssPage(appId, { country = 'us', page = 1, sort = 'mostRecent' } = {}) {
+  const url = `https://itunes.apple.com/${country}/rss/customerreviews/page=${page}/id=${appId}/sortby=${sort}/json`;
+
+  try {
+    const body = await fetchWithRetry(url, { headers: JSON_HEADERS });
+    const json = JSON.parse(body);
+    const entries = json?.feed?.entry;
+    if (!entries) return [];
+
+    const list = Array.isArray(entries) ? entries : [entries];
+    return list
+      .filter((entry) => entry?.['im:rating'])
+      .map((review) => ({
+        id: review.id?.label,
+        userName: review.author?.name?.label ?? '',
+        score: parseInt(review['im:rating'].label, 10),
+        title: review.title?.label ?? '',
+        text: review.content?.label ?? '',
+        version: review['im:version']?.label ?? null,
+        url: review.link?.attributes?.href ?? null,
+        updated: review.updated?.label ?? null,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchAppStoreReviewsFromHtml(
+  appId,
+  { country = 'us', trackViewUrl = null, delayMs = 0 } = {},
+) {
+  const pageUrl = await resolveAppStorePageUrl(appId, { country, trackViewUrl });
+  const merged = new Map();
+
+  for (let i = 0; i < HTML_SUFFIXES.length; i += 1) {
+    try {
+      const html = await fetchWithRetry(pageUrl + HTML_SUFFIXES[i], { headers: PAGE_HEADERS });
+      for (const review of extractReviewsFromHtml(html)) {
+        merged.set(review.id, review);
+      }
+    } catch {
+      // Some suffixes or storefronts may 404 — skip and continue.
+    }
+    if (i < HTML_SUFFIXES.length - 1 && delayMs > 0) await sleep(delayMs);
+  }
+
+  return [...merged.values()];
 }
 
 async function resolveAppStorePageUrl(appId, { country = 'us', trackViewUrl = null } = {}) {
