@@ -635,9 +635,26 @@
 
     .downloads {
       display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .download-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .download-group-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .download-group-links {
+      display: flex;
       gap: 8px;
       flex-wrap: wrap;
-      margin-top: 14px;
     }
     .downloads a {
       display: inline-flex;
@@ -1148,18 +1165,31 @@
     }
 
     function renderDownloads(runId) {
-      const files = [
-        ['all-reviews.csv', true],
-        ['all-reviews.json', false],
-        ['all-app-details.csv', false],
-        ['all-app-details.json', false],
-        ['summary.json', false],
-      ];
-      document.getElementById('downloads').innerHTML = [
-        ...files.map(([f, primary]) =>
-          `<a href="/api/runs/${runId}/download/${f}" download class="${primary ? 'primary' : ''}">${f}</a>`),
-        `<a href="/api/runs/${runId}/download-zip" class="primary">Download all (.zip)</a>`,
-      ].join('');
+      document.getElementById('downloads').innerHTML = `
+        <div class="download-group">
+          <div class="download-group-title">Reviews</div>
+          <div class="download-group-links">
+            <a href="/api/runs/${runId}/download/all-reviews.csv" download class="primary">Reviews (.csv)</a>
+            <a href="/api/runs/${runId}/download/all-reviews.json" download>Reviews (.json)</a>
+          </div>
+        </div>
+        <div class="download-group">
+          <div class="download-group-title">App description &amp; URLs</div>
+          <div class="download-group-links">
+            <a href="/api/runs/${runId}/download/app-info.json" download class="primary">Description + URLs (.json)</a>
+            <a href="/api/runs/${runId}/download/app-info.csv" download>Description + URLs (.csv)</a>
+            <a href="/api/runs/${runId}/download-info-zip">Description + URLs (.zip)</a>
+          </div>
+        </div>
+        <div class="download-group">
+          <div class="download-group-title">Everything</div>
+          <div class="download-group-links">
+            <a href="/api/runs/${runId}/download/all-app-details.json" download>Full app details (.json)</a>
+            <a href="/api/runs/${runId}/download/all-app-details.csv" download>Full app details (.csv)</a>
+            <a href="/api/runs/${runId}/download/summary.json" download>Summary (.json)</a>
+            <a href="/api/runs/${runId}/download-zip" class="primary">Download all (.zip)</a>
+          </div>
+        </div>`;
     }
 
     async function loadPastRuns() {

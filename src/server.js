@@ -4,7 +4,7 @@ import fsp from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import archiver from 'archiver';
-import { listRuns, runScrape, fetchMoreReviews, getPaginationState } from './scraper.js';
+import { listRuns, runScrape, fetchMoreReviews, getPaginationState, buildAppInfoExport } from './scraper.js';
 import { resolveStoreUrl } from './resolve-url.js';
 import { STORE_COUNTRIES, isValidStoreCountry, normalizeStoreCountry, normalizeStoreCountries, resolveScrapeRegions } from './countries.js';
 
@@ -133,8 +133,22 @@ const ALLOWED_FILES = new Set([
   'all-reviews.json',
   'all-app-details.json',
   'all-app-details.csv',
+  'app-info.json',
+  'app-info.csv',
   'summary.json',
 ]);
+
+async function loadAppInfoForRun(runId) {
+  const runPath = path.join(OUTPUT_DIR, runId);
+  const infoPath = path.join(runPath, 'app-info.json');
+  if (fs.existsSync(infoPath)) {
+    return JSON.parse(await fsp.readFile(infoPath, 'utf8'));
+  }
+  const detailsPath = path.join(runPath, 'all-app-details.json');
+  if (!fs.existsSync(detailsPath)) return null;
+  const details = JSON.parse(await fsp.readFile(detailsPath, 'utf8'));
+  return buildAppInfoExport(details);
+}
 
 app.get('/api/runs/:runId/download/:filename', async (req, res) => {
   const filename = req.params.filename;
@@ -142,7 +156,25 @@ app.get('/api/runs/:runId/download/:filename', async (req, res) => {
     return res.status(400).json({ error: 'Invalid file' });
   }
 
-  const filePath = path.join(OUTPUT_DIR, req.params.runId, filename);
+  const runPath = path.join(OUTPUT_DIR, req.params.runId);
+  const filePath = path.join(runPath, filename);
+
+  if (filename === 'app-info.json' || filename === 'app-info.csv') {
+    const appInfo = await loadAppInfoForRun(req.params.runId);
+    if (!appInfo?.length) {
+      return res.status(404).json({ error: 'No app details found for this run' });
+    }
+    if (filename === 'app-info.json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename="app-info.json"');
+      return res.send(JSON.stringify(appInfo, null, 2));
+    }
+    const { toCsv } = await import('./utils.js');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="app-info.csv"');
+    return res.send(toCsv(appInfo));
+  }
+
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'File not found' });
   }
@@ -163,6 +195,39 @@ app.get('/api/runs/:runId/download-zip', async (req, res) => {
   archive.on('error', (err) => res.status(500).end(err.message));
   archive.pipe(res);
   archive.directory(runPath, false);
+  await archive.finalize();
+});
+
+app.get('/api/runs/:runId/download-info-zip', async (req, res) => {
+  const runId = req.params.runId;
+  const runPath = path.join(OUTPUT_DIR, runId);
+  if (!fs.existsSync(runPath)) {
+    return res.status(404).json({ error: 'Run not found' });
+  }
+
+  const appInfo = await loadAppInfoForRun(runId);
+  if (!appInfo?.length) {
+    return res.status(404).json({ error: 'No app details found for this run' });
+  }
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${runId}-app-info.zip"`);
+
+  const archive = archiver('zip', { zlib: { level: 9 } });
+  archive.on('error', (err) => res.status(500).end(err.message));
+  archive.pipe(res);
+
+  const jsonPath = path.join(runPath, 'app-info.json');
+  const csvPath = path.join(runPath, 'app-info.csv');
+  if (fs.existsSync(jsonPath)) archive.file(jsonPath, { name: 'app-info.json' });
+  else archive.append(JSON.stringify(appInfo, null, 2), { name: 'app-info.json' });
+
+  if (fs.existsSync(csvPath)) archive.file(csvPath, { name: 'app-info.csv' });
+  else {
+    const { toCsv } = await import('./utils.js');
+    archive.append(toCsv(appInfo), { name: 'app-info.csv' });
+  }
+
   await archive.finalize();
 });
 

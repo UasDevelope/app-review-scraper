@@ -467,7 +467,11 @@ async function mergeExports(outRoot, summary) {
   await writeJson(path.join(outRoot, 'all-app-details.json'), allDetails);
   await writeCsv(path.join(outRoot, 'all-app-details.csv'), allDetails.map(flattenAppDetailsForCsv));
 
-  return { totalReviews: allReviews.length, allReviews, allDetails };
+  const appInfo = buildAppInfoExport(allDetails);
+  await writeJson(path.join(outRoot, 'app-info.json'), appInfo);
+  await writeCsv(path.join(outRoot, 'app-info.csv'), appInfo);
+
+  return { totalReviews: allReviews.length, allReviews, allDetails, appInfo };
 }
 
 export async function getPaginationState(runId) {
@@ -539,6 +543,20 @@ function flattenAppDetailsForCsv(details) {
     developerWebsite: details.developerWebsite ?? '',
     url: details.url,
   };
+}
+
+export function buildAppInfoExport(allDetails) {
+  return allDetails.map((details) => ({
+    appName: details.appName,
+    store: details.store,
+    title: details.title ?? '',
+    url: details.url ?? '',
+    description: details.description ?? '',
+    termsOfService: details.termsOfService ?? '',
+    privacyPolicy: details.privacyPolicy ?? '',
+    developerWebsite: details.developerWebsite ?? '',
+    storeCountry: details.storeCountry ?? '',
+  }));
 }
 
 async function fileExists(filePath) {
