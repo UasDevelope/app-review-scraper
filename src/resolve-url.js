@@ -54,7 +54,7 @@ export async function resolveStoreUrl(input, { country = 'us' } = {}) {
       name: simplifyTitle(details.title),
       googlePlayId: parsed.googlePlayId,
       appStoreId: '',
-      note: `Android only — will scrape Google Play for "${simplifyTitle(details.title)}"`,
+      note: 'Add an App Store link too if you want iOS reviews for this app.',
     };
   }
 
@@ -64,6 +64,6 @@ export async function resolveStoreUrl(input, { country = 'us' } = {}) {
     name: simplifyTitle(details.title),
     googlePlayId: '',
     appStoreId: parsed.appStoreId,
-    note: `iOS only — will scrape App Store for "${simplifyTitle(details.title)}"`,
+    note: 'Add a Google Play link too if you want Android reviews for this app.',
   };
 }

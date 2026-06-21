@@ -283,10 +283,9 @@
 
     .paste-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr;
       gap: 10px;
     }
-    @media (max-width: 700px) { .paste-grid { grid-template-columns: 1fr; } }
 
     .paste-block {
       background: #fff;
@@ -294,8 +293,9 @@
       border-radius: var(--radius-sm);
       padding: 12px;
     }
-    .paste-block.android { border-left: 3px solid var(--android); }
-    .paste-block.ios { border-left: 3px solid var(--ios); }
+    .paste-block.unified {
+      border-left: 3px solid var(--accent);
+    }
     .paste-block h3 {
       margin: 0 0 10px;
       font-size: 0.88rem;
@@ -309,7 +309,19 @@
       grid-template-columns: 1fr;
       gap: 10px;
     }
+    .paste-row-inline {
+      grid-template-columns: 1fr auto;
+      align-items: center;
+    }
+    @media (max-width: 560px) {
+      .paste-row-inline { grid-template-columns: 1fr; }
+    }
     .paste-row input { margin-bottom: 0; }
+    .paste-examples {
+      margin: 8px 0 0;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
 
     .store-tag {
       font-size: 0.68rem;
@@ -775,26 +787,20 @@
       <div class="workspace-grid">
         <main class="workspace-main" id="step-apps">
           <p class="section-label">Step 1 · Add apps</p>
-          <p class="hint">Paste a store link — Android and iOS are added separately.</p>
+          <p class="hint">Paste one store link — we detect Android or iOS automatically. Paste a second link for the same app to include both stores.</p>
 
           <div class="paste-grid">
-            <div class="paste-block android">
-              <h3><span class="store-tag tag-android">Android</span> Google Play</h3>
-              <div class="paste-row">
-                <input id="paste-gp-url" placeholder="play.google.com/store/apps/..." />
-                <button type="button" class="btn-secondary btn-block resolve-link" data-store="google_play">Add app</button>
+            <div class="paste-block unified">
+              <h3>Add from link</h3>
+              <div class="paste-row paste-row-inline">
+                <input id="paste-store-url" placeholder="play.google.com/store/apps/... or apps.apple.com/.../id123456789" />
+                <button type="button" class="btn-secondary resolve-link" id="add-from-link">Add app</button>
               </div>
-            </div>
-            <div class="paste-block ios">
-              <h3><span class="store-tag tag-ios">iOS</span> App Store</h3>
-              <div class="paste-row">
-                <input id="paste-as-url" placeholder="apps.apple.com/.../id123456789" />
-                <button type="button" class="btn-secondary btn-block resolve-link" data-store="app_store">Add app</button>
-              </div>
+              <p class="paste-examples">Google Play and App Store links are both accepted — one link at a time.</p>
             </div>
           </div>
 
-          <div class="notice" id="resolve-note">Paste a link above, or add manually below.</div>
+          <div class="notice" id="resolve-note">Paste a store link above, or add manually below.</div>
           <div class="notice error" id="server-banner" hidden></div>
 
           <hr class="section-divider" />
@@ -1278,13 +1284,13 @@
       setNotice('Demo loaded — Spotify on Android + iOS.', 'success');
     };
 
-    async function addFromLink(inputId, expectedStore) {
-      const input = document.getElementById(inputId);
+    async function addFromLink() {
+      const input = document.getElementById('paste-store-url');
+      const btn = document.getElementById('add-from-link');
       const url = input.value.trim();
-      const btn = document.querySelector(`.resolve-link[data-store="${expectedStore}"]`);
 
       if (!url) {
-        setNotice(`Paste a ${expectedStore === 'google_play' ? 'Google Play' : 'App Store'} link first.`, 'error');
+        setNotice('Paste a Google Play or App Store link first.', 'error');
         return;
       }
 
@@ -1317,13 +1323,7 @@
           return;
         }
 
-        if (data.store !== expectedStore) {
-          const expected = expectedStore === 'google_play' ? 'Google Play (Android)' : 'App Store (iOS)';
-          const got = data.store === 'google_play' ? 'Google Play' : 'App Store';
-          setNotice(`Wrong link — you pasted ${got} but this box is for ${expected}.`, 'error');
-          return;
-        }
-
+        const storeLabel = data.store === 'google_play' ? 'Google Play (Android)' : 'App Store (iOS)';
         const rows = collectApps().filter((a) => a.name || a.googlePlayId || a.appStoreId);
         const existing = rows.find((a) => a.name.trim().toLowerCase() === data.name.trim().toLowerCase());
         if (existing) {
@@ -1339,7 +1339,9 @@
         }
         renderApps(rows);
         input.value = '';
-        const action = existing ? `Updated ${data.name} with ${expectedStore === 'google_play' ? 'Google Play' : 'App Store'} link.` : `Added ${data.name}.`;
+        const action = existing
+          ? `Updated ${data.name} with ${storeLabel} link.`
+          : `Added ${data.name} — detected ${storeLabel}.`;
         setNotice(`${action} ${data.note || ''}`.trim(), 'success');
       } catch (error) {
         setNotice(error.message || 'Connection failed. Please try again.', 'error');
@@ -1351,19 +1353,11 @@
       }
     }
 
-    document.querySelectorAll('.resolve-link').forEach((btn) => {
-      btn.onclick = () => addFromLink(
-        btn.dataset.store === 'google_play' ? 'paste-gp-url' : 'paste-as-url',
-        btn.dataset.store,
-      );
-    });
-
-    ['paste-gp-url', 'paste-as-url'].forEach((id) => {
-      document.getElementById(id).addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        addFromLink(id, id === 'paste-gp-url' ? 'google_play' : 'app_store');
-      });
+    document.getElementById('add-from-link').onclick = addFromLink;
+    document.getElementById('paste-store-url').addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      addFromLink();
     });
 
     fetchMoreBtn.onclick = async () => {
