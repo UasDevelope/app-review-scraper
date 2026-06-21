@@ -25,12 +25,16 @@ const PAGINATION_FILE = 'pagination-state.json';
 const GOOGLE_PLAY_MAX = 5000;
 export { GOOGLE_PLAY_MAX as GOOGLE_PLAY_BATCH_SIZE };
 
+export function reviewDedupeKey(review) {
+  const id = review.reviewId ?? `${review.userName}|${review.date}|${(review.text ?? '').slice(0, 40)}`;
+  return `${review.store ?? ''}:${id}`;
+}
+
 function dedupeReviews(reviews) {
   const seen = new Set();
   const out = [];
   for (const review of reviews) {
-    const id = review.reviewId ?? `${review.userName}|${review.date}|${(review.text ?? '').slice(0, 40)}`;
-    const key = `${review.store ?? ''}:${id}`;
+    const key = reviewDedupeKey(review);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(review);
@@ -137,6 +141,14 @@ export async function scrapeApp(app, outRoot, { countries, country, maxCoverage 
               log(`Google Play (${region}): ${count.toLocaleString()} reviews fetched…`);
             }
           },
+          onReviewChunk: (chunk) => {
+            if (!chunk.length) return;
+            onLog?.({
+              type: 'reviews',
+              app: label,
+              reviews: chunk.map((r) => ({ appName: result.name, ...r })),
+            });
+          },
         });
         merged.push(...batch.reviews);
         if (androidRegions.length === 1 && batch.hasMore) {
@@ -201,6 +213,14 @@ export async function scrapeApp(app, outRoot, { countries, country, maxCoverage 
               log(`App Store: ${completed}/${total} regions — ${unique.toLocaleString()} unique reviews…`);
             }
           },
+          onReviewChunk: (chunk) => {
+            if (!chunk.length) return;
+            onLog?.({
+              type: 'reviews',
+              app: label,
+              reviews: chunk.map((r) => ({ appName: result.name, ...r })),
+            });
+          },
         });
       } else {
         reviews = await fetchAllAppStoreReviews(app.appStoreId, {
@@ -208,6 +228,16 @@ export async function scrapeApp(app, outRoot, { countries, country, maxCoverage 
           trackViewUrl,
           delayMs: 400,
         });
+        if (reviews.length) {
+          const chunkSize = 50;
+          for (let i = 0; i < reviews.length; i += chunkSize) {
+            onLog?.({
+              type: 'reviews',
+              app: label,
+              reviews: reviews.slice(i, i + chunkSize).map((r) => ({ appName: result.name, ...r })),
+            });
+          }
+        }
       }
 
       const appDir = path.join(outRoot, safeName, 'app_store');
@@ -256,8 +286,16 @@ export async function fetchMoreReviewsForApp(appEntry, outRoot, { country, batch
         country,
         batchSize,
         continuationToken: appEntry.googlePlay.continuationToken,
+        onReviewChunk: (chunk) => {
+          if (!chunk.length) return;
+          onLog?.({
+            type: 'reviews',
+            app: label,
+            reviews: chunk.map((r) => ({ appName: label, ...r })),
+          });
+        },
       });
-      const merged = [...existing, ...batch.reviews];
+      const merged = dedupeReviews([...existing, ...batch.reviews]);
       const appDir = path.join(outRoot, safeName, 'google_play');
       await writeJson(path.join(appDir, 'reviews.json'), merged);
       await writeCsv(path.join(appDir, 'reviews.csv'), merged);

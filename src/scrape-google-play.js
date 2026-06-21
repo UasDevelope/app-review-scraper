@@ -90,7 +90,7 @@ export async function fetchAllGooglePlayReviews(
 
 export async function fetchGooglePlayReviewsBatch(
   appId,
-  { lang = 'en', country = 'us', batchSize = 100, continuationToken = null, delayMs = DEFAULT_DELAY_MS, onProgress } = {},
+  { lang = 'en', country = 'us', batchSize = 100, continuationToken = null, delayMs = DEFAULT_DELAY_MS, onProgress, onReviewChunk } = {},
 ) {
   const reviews = [];
   let nextToken = continuationToken;
@@ -114,10 +114,15 @@ export async function fetchGooglePlayReviewsBatch(
       break;
     }
 
+    const pageReviews = [];
     for (const review of batch) {
-      reviews.push(normalizeGooglePlayReview(review, appId, country));
+      const normalized = normalizeGooglePlayReview(review, appId, country);
+      pageReviews.push(normalized);
+      reviews.push(normalized);
       if (reviews.length >= batchSize) break;
     }
+
+    if (pageReviews.length && onReviewChunk) onReviewChunk(pageReviews);
 
     nextToken = response.nextPaginationToken;
     pagesFetched += 1;

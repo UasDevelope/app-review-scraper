@@ -752,6 +752,16 @@
       color: var(--text);
     }
 
+    .live-badge {
+      background: var(--accent-soft);
+      color: var(--accent);
+      animation: livePulse 1.6s ease-in-out infinite;
+    }
+    @keyframes livePulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
     .empty { color: var(--muted); font-size: 0.85rem; padding: 12px 0; text-align: center; }
 
     .section-title {
@@ -914,6 +924,7 @@
     let currentRunId = null;
     let previewPage = 1;
     let previewPageSize = 20;
+    let lastLiveReviewVersion = 0;
     const previewPageSizeGroup = document.getElementById('preview-page-size');
     const ANDROID_BATCH = 5000;
 
@@ -1076,6 +1087,47 @@
         </tr>`).join('');
     }
 
+    function resetLivePreview() {
+      lastLiveReviewVersion = 0;
+      const badge = document.getElementById('preview-count-badge');
+      badge.textContent = '0 reviews (live)';
+      badge.classList.add('live-badge');
+      document.getElementById('preview-card').hidden = false;
+      document.getElementById('details-preview').innerHTML =
+        '<p class="hint">Reviews will appear here as they are collected. Duplicates are skipped automatically.</p>';
+      document.getElementById('preview-meta').innerHTML = '';
+      document.getElementById('preview-table').innerHTML =
+        '<div class="empty">Waiting for first reviews…</div>';
+      document.getElementById('preview-pager').hidden = true;
+    }
+
+    function renderLivePreview(job) {
+      const total = job.liveReviewTotal || 0;
+      const badge = document.getElementById('preview-count-badge');
+      badge.textContent = `${total.toLocaleString()} unique review${total === 1 ? '' : 's'} (live)`;
+      badge.classList.add('live-badge');
+      document.getElementById('preview-card').hidden = false;
+      document.getElementById('preview-pager').hidden = true;
+
+      const skipped = job.duplicatesSkipped || 0;
+      const shown = job.liveReviews?.length || 0;
+      document.getElementById('preview-meta').innerHTML = `
+        <p class="hint">Showing latest <strong>${shown.toLocaleString()}</strong> unique reviews as they arrive.
+        ${skipped ? ` · <strong>${skipped.toLocaleString()}</strong> duplicate${skipped === 1 ? '' : 's'} skipped` : ''}</p>`;
+
+      if (!shown) {
+        document.getElementById('preview-table').innerHTML =
+          '<div class="empty">Waiting for first reviews…</div>';
+        return;
+      }
+
+      document.getElementById('preview-table').innerHTML = `
+        <table>
+          <thead><tr><th>App</th><th>Store</th><th>Country</th><th>Rating</th><th>Review</th><th>Date</th></tr></thead>
+          <tbody>${renderReviewRows(job.liveReviews)}</tbody>
+        </table>`;
+    }
+
     async function loadPreview(runId, page = 1) {
       previewPage = page;
       currentRunId = runId;
@@ -1083,6 +1135,7 @@
       if (!res.ok) return;
       const data = await res.json();
       document.getElementById('preview-card').hidden = false;
+      document.getElementById('preview-count-badge').classList.remove('live-badge');
       document.getElementById('preview-count-badge').textContent =
         `${data.totalReviews} review${data.totalReviews === 1 ? '' : 's'}`;
 
@@ -1250,6 +1303,10 @@
         setStatus('running', job.progressLabel || 'Scraping…');
         startBtn.disabled = true;
         fetchMoreBtn.disabled = true;
+        if ((job.liveReviewVersion || 0) !== lastLiveReviewVersion) {
+          lastLiveReviewVersion = job.liveReviewVersion || 0;
+          renderLivePreview(job);
+        }
       } else if (job.status === 'complete') {
         setStatus('complete', `Done — ${job.result.totalReviews} reviews`);
         startBtn.disabled = false;
@@ -1365,6 +1422,8 @@
       setStatus('running', 'Fetching next 5,000 Android reviews…');
       fetchMoreBtn.disabled = true;
       startBtn.disabled = true;
+      resetLivePreview();
+      scrollToEl('preview-card');
 
       const res = await fetch(`/api/runs/${currentRunId}/fetch-more`, {
         method: 'POST',
@@ -1408,7 +1467,8 @@
         previewPage = 1;
         currentRunId = null;
         document.getElementById('results-card').hidden = true;
-        document.getElementById('preview-card').hidden = true;
+        resetLivePreview();
+        scrollToEl('preview-card');
 
         const res = await fetch('/api/scrape', {
           method: 'POST',
@@ -1431,7 +1491,7 @@
         }
 
         clearInterval(pollTimer);
-        pollTimer = setInterval(pollJob, 1500);
+        pollTimer = setInterval(pollJob, 800);
         pollJob();
       } catch (error) {
         setStatus('error', 'Something went wrong');

@@ -107,6 +107,7 @@ export async function fetchAppStoreReviewsAllRegions(
     concurrency = 6,
     delayMs = 150,
     onProgress = null,
+    onReviewChunk = null,
   } = {},
 ) {
   const merged = new Map();
@@ -123,9 +124,15 @@ export async function fetchAppStoreReviewsAllRegions(
   for (let i = 0; i < countries.length; i += concurrency) {
     const chunk = countries.slice(i, i + concurrency);
     const batches = await Promise.all(chunk.map((country) => fetchRegion(country)));
+    const newReviews = [];
     for (const batch of batches) {
-      for (const review of batch) merged.set(review.reviewId, review);
+      for (const review of batch) {
+        if (merged.has(review.reviewId)) continue;
+        merged.set(review.reviewId, review);
+        newReviews.push(review);
+      }
     }
+    if (newReviews.length) onReviewChunk?.(newReviews);
     completed += chunk.length;
     onProgress?.({ completed, total: countries.length, unique: merged.size });
     if (i + concurrency < countries.length && delayMs > 0) await sleep(delayMs);

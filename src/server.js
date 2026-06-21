@@ -4,7 +4,7 @@ import fsp from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import archiver from 'archiver';
-import { listRuns, runScrape, fetchMoreReviews, getPaginationState, buildAppInfoExport } from './scraper.js';
+import { listRuns, runScrape, fetchMoreReviews, getPaginationState, buildAppInfoExport, reviewDedupeKey } from './scraper.js';
 import { resolveStoreUrl } from './resolve-url.js';
 import { STORE_COUNTRIES, isValidStoreCountry, normalizeStoreCountry, normalizeStoreCountries, resolveScrapeRegions } from './countries.js';
 
@@ -27,12 +27,19 @@ app.use(express.static(PUBLIC_DIR));
 
 let activeJob = null;
 
+const LIVE_REVIEW_BUFFER = 200;
+
 function createJob() {
   return {
     id: Date.now().toString(36),
     status: 'queued',
     logs: [],
     progress: {},
+    liveReviews: [],
+    liveReviewKeys: new Set(),
+    liveReviewTotal: 0,
+    duplicatesSkipped: 0,
+    liveReviewVersion: 0,
     result: null,
     error: null,
     startedAt: new Date().toISOString(),
@@ -40,18 +47,72 @@ function createJob() {
   };
 }
 
+function resetLiveReviews(job) {
+  job.liveReviews = [];
+  job.liveReviewKeys = new Set();
+  job.liveReviewTotal = 0;
+  job.duplicatesSkipped = 0;
+  job.liveReviewVersion = 0;
+}
+
+function addLiveReviews(job, reviews = []) {
+  if (!reviews.length) return;
+  if (!job.liveReviewKeys) job.liveReviewKeys = new Set();
+
+  let added = 0;
+  for (const review of reviews) {
+    const key = reviewDedupeKey(review);
+    if (job.liveReviewKeys.has(key)) {
+      job.duplicatesSkipped += 1;
+      continue;
+    }
+    job.liveReviewKeys.add(key);
+    job.liveReviews.unshift(review);
+    added += 1;
+  }
+
+  if (job.liveReviews.length > LIVE_REVIEW_BUFFER) {
+    job.liveReviews.length = LIVE_REVIEW_BUFFER;
+  }
+  if (added > 0) {
+    job.liveReviewTotal = job.liveReviewKeys.size;
+    job.liveReviewVersion += 1;
+  }
+}
+
+async function seedLiveReviewsFromRun(job, runId) {
+  try {
+    const reviews = JSON.parse(
+      await fsp.readFile(path.join(OUTPUT_DIR, runId, 'all-reviews.json'), 'utf8'),
+    );
+    addLiveReviews(job, reviews);
+  } catch {
+    // no prior export yet
+  }
+}
+
+function serializeJob(job) {
+  if (!job) return null;
+  const { liveReviewKeys, ...publicJob } = job;
+  return publicJob;
+}
+
 function pushLog(job, event) {
   if (event.type === 'log') {
     job.logs.push({ time: new Date().toISOString(), message: event.message });
   }
+  if (event.type === 'reviews') {
+    addLiveReviews(job, event.reviews);
+  }
   if (event.type === 'progress') {
     job.progress[`${event.app}:${event.store}`] = event.count;
     const storeLabel = event.store === 'google_play' ? 'Android' : 'iOS';
-    job.progressLabel = `${event.app} (${storeLabel}): ${event.count.toLocaleString()} reviews…`;
+    job.progressLabel = `${event.app} (${storeLabel}): ${event.count.toLocaleString()} unique reviews…`;
   }
   if (event.type === 'started') {
     job.status = 'running';
     job.runId = event.runId;
+    resetLiveReviews(job);
     job.logs.push({
       time: new Date().toISOString(),
       message: `Run started — ${event.appCount} app(s), regions: ${event.country}`,
@@ -80,7 +141,7 @@ app.get('/api/health', (_req, res) => {
 
 app.get('/api/job', (_req, res) => {
   if (!activeJob) return res.json({ job: null });
-  res.json({ job: activeJob });
+  res.json({ job: serializeJob(activeJob) });
 });
 
 app.get('/api/runs', async (_req, res) => {
@@ -268,6 +329,7 @@ app.post('/api/runs/:runId/fetch-more', async (req, res) => {
   res.json({ jobId: job.id, message: 'Fetching next batch' });
 
   try {
+    await seedLiveReviewsFromRun(job, req.params.runId);
     await fetchMoreReviews(req.params.runId, {
       batchSize: Number(batchSize) || 5000,
       onLog: (event) => pushLog(job, event),
