@@ -1325,14 +1325,22 @@
         }
 
         const rows = collectApps().filter((a) => a.name || a.googlePlayId || a.appStoreId);
-        rows.push({
-          name: data.name,
-          googlePlayId: data.googlePlayId || '',
-          appStoreId: data.appStoreId || '',
-        });
+        const existing = rows.find((a) => a.name.trim().toLowerCase() === data.name.trim().toLowerCase());
+        if (existing) {
+          if (data.googlePlayId) existing.googlePlayId = data.googlePlayId;
+          if (data.appStoreId) existing.appStoreId = data.appStoreId;
+          if (!existing.name) existing.name = data.name;
+        } else {
+          rows.push({
+            name: data.name,
+            googlePlayId: data.googlePlayId || '',
+            appStoreId: data.appStoreId || '',
+          });
+        }
         renderApps(rows);
         input.value = '';
-        setNotice(`Added ${data.name}. ${data.note || ''}`.trim(), 'success');
+        const action = existing ? `Updated ${data.name} with ${expectedStore === 'google_play' ? 'Google Play' : 'App Store'} link.` : `Added ${data.name}.`;
+        setNotice(`${action} ${data.note || ''}`.trim(), 'success');
       } catch (error) {
         setNotice(error.message || 'Connection failed. Please try again.', 'error');
       } finally {

@@ -29,12 +29,46 @@ function dedupeReviews(reviews) {
   const seen = new Set();
   const out = [];
   for (const review of reviews) {
-    const key = review.reviewId ?? `${review.userName}|${review.date}|${(review.text ?? '').slice(0, 40)}`;
+    const id = review.reviewId ?? `${review.userName}|${review.date}|${(review.text ?? '').slice(0, 40)}`;
+    const key = `${review.store ?? ''}:${id}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(review);
   }
   return out;
+}
+
+function consolidateSummaryEntries(summary) {
+  const byName = new Map();
+  for (const entry of summary) {
+    const key = entry.name.trim().toLowerCase();
+    const existing = byName.get(key);
+    if (!existing) {
+      byName.set(key, { ...entry });
+      continue;
+    }
+    if (entry.googlePlayReviews != null) existing.googlePlayReviews = entry.googlePlayReviews;
+    if (entry.appStoreReviews != null) existing.appStoreReviews = entry.appStoreReviews;
+    if (entry.errors?.length) {
+      existing.errors = [...(existing.errors ?? []), ...entry.errors];
+    }
+  }
+  return [...byName.values()];
+}
+
+function consolidateAppsForScrape(apps) {
+  const byName = new Map();
+  for (const app of apps) {
+    const key = app.name.trim().toLowerCase();
+    const existing = byName.get(key);
+    if (!existing) {
+      byName.set(key, { ...app, name: app.name.trim() });
+      continue;
+    }
+    if (app.googlePlayId) existing.googlePlayId = app.googlePlayId;
+    if (app.appStoreId) existing.appStoreId = app.appStoreId;
+  }
+  return [...byName.values()];
 }
 
 export async function scrapeApp(app, outRoot, { countries, country, maxCoverage = false, onLog, fetchDetails = true }) {
@@ -288,6 +322,8 @@ export async function runScrape({
     throw new Error('Add at least one app to scrape.');
   }
 
+  const mergedApps = consolidateAppsForScrape(apps);
+
   const androidRegions = orderStoreCountries(resolveScrapeRegions({ countries, country, maxCoverage: false }));
   const iosRegions = orderStoreCountries(
     maxCoverage
@@ -303,7 +339,7 @@ export async function runScrape({
     type: 'started',
     runId,
     outRoot,
-    appCount: apps.length,
+    appCount: mergedApps.length,
     country: maxCoverage ? `all ${iosRegions.length} iOS regions` : androidRegions.join(', '),
     countries: maxCoverage ? iosRegions : androidRegions,
     maxCoverage: Boolean(maxCoverage),
@@ -319,7 +355,7 @@ export async function runScrape({
 
   const summary = [];
 
-  for (const app of apps) {
+  for (const app of mergedApps) {
     const result = await scrapeApp(app, outRoot, { countries: androidRegions, maxCoverage, onLog });
     summary.push({
       name: result.name,
@@ -341,7 +377,7 @@ export async function runScrape({
   }
 
   await writeJson(path.join(outRoot, PAGINATION_FILE), paginationState);
-  const exportData = await mergeExports(outRoot, summary);
+  const exportData = await mergeExports(outRoot, consolidateSummaryEntries(summary));
 
   const hasMore = paginationState.apps.some((a) => a.googlePlay?.hasMore || a.appStore?.hasMore);
 
@@ -402,7 +438,7 @@ export async function fetchMoreReviews(runId, { batchSize = GOOGLE_PLAY_MAX, onL
 
   state.batchSize = size;
   await writeJson(path.join(actualOutRoot, PAGINATION_FILE), state);
-  const exportData = await mergeExports(actualOutRoot, summary);
+  const exportData = await mergeExports(actualOutRoot, consolidateSummaryEntries(summary));
 
   const hasMore = state.apps.some((a) => a.googlePlay?.hasMore || a.appStore?.hasMore);
 
@@ -419,8 +455,11 @@ export async function fetchMoreReviews(runId, { batchSize = GOOGLE_PLAY_MAX, onL
 }
 
 async function mergeExports(outRoot, summary) {
+  const consolidatedSummary = consolidateSummaryEntries(summary);
   const allReviews = [];
   const allDetails = [];
+  const seenReviewFiles = new Set();
+  const seenDetailFiles = new Set();
 
   let scrapeCountry = 'us';
   try {
@@ -430,7 +469,7 @@ async function mergeExports(outRoot, summary) {
     // no pagination file
   }
 
-  for (const entry of summary) {
+  for (const entry of consolidatedSummary) {
     const safeName = sanitizeFilename(entry.name);
     const paths = [
       ['google_play', path.join(outRoot, safeName, 'google_play', 'reviews.json'), path.join(outRoot, safeName, 'google_play', 'app-details.json')],
@@ -439,13 +478,20 @@ async function mergeExports(outRoot, summary) {
 
     for (const [store, reviewsPath, detailsPath] of paths) {
       let detailsCountry = scrapeCountry;
-      try {
-        const details = JSON.parse(await fs.readFile(detailsPath, 'utf8'));
-        allDetails.push({ appName: entry.name, ...details });
-        detailsCountry = details.storeCountry ?? scrapeCountry;
-      } catch {
-        // not scraped
+      if (!seenDetailFiles.has(detailsPath)) {
+        seenDetailFiles.add(detailsPath);
+        try {
+          const details = JSON.parse(await fs.readFile(detailsPath, 'utf8'));
+          allDetails.push({ appName: entry.name, ...details });
+          detailsCountry = details.storeCountry ?? scrapeCountry;
+        } catch {
+          // not scraped
+        }
       }
+
+      if (seenReviewFiles.has(reviewsPath)) continue;
+      seenReviewFiles.add(reviewsPath);
+
       try {
         const reviews = JSON.parse(await fs.readFile(reviewsPath, 'utf8'));
         allReviews.push(
@@ -461,9 +507,11 @@ async function mergeExports(outRoot, summary) {
     }
   }
 
-  await writeJson(path.join(outRoot, 'summary.json'), summary);
-  await writeJson(path.join(outRoot, 'all-reviews.json'), allReviews);
-  await writeCsv(path.join(outRoot, 'all-reviews.csv'), allReviews);
+  const uniqueReviews = dedupeReviews(allReviews);
+
+  await writeJson(path.join(outRoot, 'summary.json'), consolidatedSummary);
+  await writeJson(path.join(outRoot, 'all-reviews.json'), uniqueReviews);
+  await writeCsv(path.join(outRoot, 'all-reviews.csv'), uniqueReviews);
   await writeJson(path.join(outRoot, 'all-app-details.json'), allDetails);
   await writeCsv(path.join(outRoot, 'all-app-details.csv'), allDetails.map(flattenAppDetailsForCsv));
 
@@ -471,7 +519,7 @@ async function mergeExports(outRoot, summary) {
   await writeJson(path.join(outRoot, 'app-info.json'), appInfo);
   await writeCsv(path.join(outRoot, 'app-info.csv'), appInfo);
 
-  return { totalReviews: allReviews.length, allReviews, allDetails, appInfo };
+  return { totalReviews: uniqueReviews.length, allReviews: uniqueReviews, allDetails, appInfo };
 }
 
 export async function getPaginationState(runId) {
